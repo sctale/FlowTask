@@ -4,15 +4,28 @@
 
 当前版本 **v2.1.1**（变更记录见 [CHANGELOG.md](CHANGELOG.md)，设计规范见 [DESIGN.md](DESIGN.md)）。
 
-## 下载与两种用法
+## 两种用法
 
-| 形态 | 拿什么 | 怎么用 |
+| 形态 | 怎么获得 | 怎么用 |
 |---|---|---|
-| **桌面版（推荐）** | [Releases](https://github.com/sctale/FlowTask/releases) 里的 `FlowTask_x.y.z_x64-setup.exe`（安装）或 `FlowTask-Portable_x.y.z.zip`（免安装） | 双击即用：内嵌服务端与运行时，零依赖，数据在 exe 旁边；托盘常驻 |
-| **网页版** | 源码页下载 `FlowTask_本地项目管理平台.html`（或整个源码包） | 双击 HTML 立即体验（数据暂存浏览器）；配合同目录 `启动 FlowTask.vbs` 获得按账户的本地文件存储 |
+| **网页版（零构建）** | 直接下载仓库里的 `FlowTask_本地项目管理平台.html` 单文件 | 双击 HTML 立即体验（数据暂存浏览器）；配合源码包内的 `启动 FlowTask.vbs` 获得按账户的本地文件存储 |
+| **桌面版（自行构建）** | 本仓库**不提供预编译 exe**（代码签名需逐项目实名申请，见下文说明），一条命令自构建 | 构建产物 `desktop/dist/<version>/`：免安装三件套双击即用，内嵌服务端与运行时、数据在 exe 旁边、托盘常驻 |
 
 两个形态共用同一份服务端代码与同一套数据文件格式，可混用、可互相迁移。
-产物均带 SHA256（见 Release 附件 `SHA256SUMS.txt`）。
+
+桌面版构建（需 Node 20+ / Rust / VS Build Tools C++，约 10 分钟）：
+
+```bash
+git clone https://github.com/sctale/FlowTask.git && cd FlowTask/desktop
+npm install
+powershell -File build_release.ps1     # 产物在 desktop/dist/<version>/，含 SHA256SUMS.txt
+```
+
+> 为什么不发预编译 exe：未签名的 exe 会被 SmartScreen/杀软大面积误报，而代码签名证书
+> （OV）必须绑定申请者真实身份，无法由项目代持。自构建产物会按脚本提示自动生成一张
+> **本机自签证书**并全链路签名，在你自己的电脑上干净无告警；要对外分发请自行申请
+> [SignPath Foundation](https://signpath.io/solutions/open-source-community)（开源项目免费）
+> 或购买 OV 证书，`build_release.ps1` 换证书指纹即可直接复用。
 
 > **给第一次拿到这个文件夹的同事**：看 [使用说明.md](使用说明.md)（新电脑怎么起、怎么改共享目录、
 > 怎么开账号、个人项目与团队共享项目的区别）。下面这份 README 偏工程与实现。
@@ -99,13 +112,7 @@
 - **与网页版共存**：启动时先探测 5178——已有服务（vbs 起的或同事的）就直接复用，不重复起进程；
 - **安装包**：`bundle/nsis/FlowTask_x.y.z_x64-setup.exe`（用户级安装，无需管理员）。
 
-自己构建（需 Rust + VS Build Tools）：
-
-```bash
-cd desktop
-npm install
-powershell -File build_release.ps1   # 一键：sidecar→签名→主程序→安装包→dist/ 汇总
-```
+构建命令见文首「两种用法」；`build_release.ps1` 支持 `-SkipSidecar`（服务端代码没改时跳过 88MB 重打）。
 
 ### 代码签名与杀软误报
 
@@ -116,8 +123,8 @@ powershell -File build_release.ps1   # 一键：sidecar→签名→主程序→�
   `%USERPROFILE%\FlowTaskSign\`，**绝不入库**），本机信任链干净。
 - **对外发布**：自签证书在别人的机器上不受信，建议购买 OV/EV 代码签名证书后
   仅替换证书指纹即可复用整条流水线；被误报时可向杀软厂商提交白名单复检（附 SHA256SUMS.txt）。
-- 发布：`dist/<version>/` 即完整发布物（免安装 + 安装包 + sidecar + SHA256SUMS.txt），
-  本地构建后直接上传，无需 CI。
+- 本仓库 Releases **不挂预编译 exe**（原因见文首）；`dist/<version>/` 供自用与内网分发，
+  本地构建即可，无需 CI。
 
 桌面版跑的服务端就是仓库里这份 `flowtask_server.js`（esbuild 捆成单文件 Node SEA 注入），
 不存在第二实现；壳只做窗口/托盘/进程管理（`desktop/src-tauri/src/main.rs`，约 200 行）。
@@ -275,7 +282,7 @@ powershell -File build_release.ps1   # 一键：sidecar→签名→主程序→�
 
 规则只有三条：版本号 `meta.rev` 高者胜；同版本不同内容算真冲突，**双方都先留底再定胜负**；
 共享盘「读不到」时，只有明确的不存在（`ENOENT`）才当作没有，网络断开/无权限一律不动、绝不覆盖。
-完全不开启时，服务端行为与没有这套机制时完全一致。架构与分期：本地库 + 后台同步引擎 + 三路合并内核，分三期落地。
+完全不开启时，服务端行为与没有这套机制时完全一致。架构与分期见 [局域网多用户升级方案.md](局域网多用户升级方案.md)。
 
 ### 多人同时改同一份数据会怎样（v1.9 起：实体级三路合并）
 
