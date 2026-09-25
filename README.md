@@ -58,8 +58,8 @@ powershell -File build_release.ps1     # 产物在 desktop/dist/<version>/，含
 
 ![命令面板](docs/screenshots/06-cmdk.png)
 
-> **数据按账户存放，全部是 .json 文件**——公司电脑会锁定被编辑过的 Office / txt / pdf，
-> 本工具不产生任何这类文件。
+> **数据全部是按账户存放的 JSON 文件**——不产生数据库、Office 文档等任何二进制或受限格式，
+> 备份、迁移、同步都只是普通文件操作，在受管控的电脑上同样开箱即用。
 
 ## 功能一览
 
