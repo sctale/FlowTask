@@ -30,6 +30,34 @@ powershell -File build_release.ps1     # 产物在 desktop/dist/<version>/，含
 > **给第一次拿到这个文件夹的同事**：看 [使用说明.md](使用说明.md)（新电脑怎么起、怎么改共享目录、
 > 怎么开账号、个人项目与团队共享项目的区别）。下面这份 README 偏工程与实现。
 
+## 界面一览
+
+以下截图均来自演示数据（`admin / admin123` 首次登录即见），桌面版与网页版界面完全一致。
+
+**今天页** —— 打开先看"今天要处理什么"：逾期 / 今天到期置顶，子任务一起算进来；统计是一行文字而不是四张大卡
+
+![今天页](docs/screenshots/01-today.png)
+
+**列表视图** —— 按状态分组（待办 / 进行中 / 已暂停 / 已完成），拖拽排序、跨组改状态，行内直接指派与改期
+
+![列表视图](docs/screenshots/02-list.png)
+
+**看板视图** —— 拖卡片跨列改状态，列即状态、无需额外配置工作流
+
+![看板视图](docs/screenshots/03-board.png)
+
+**排期（甘特）** —— 开始 / 截止日期画成时间条，逾期与冲突一眼可见
+
+![排期视图](docs/screenshots/04-gantt.png)
+
+**任务详情抽屉** —— 描述、子任务、评论、活动记录全在一侧展开，不离开当前列表
+
+![任务详情](docs/screenshots/05-drawer.png)
+
+**Ctrl+K 命令面板** —— 建任务、找项目、切视图、跳转，一个键盘入口全搞定
+
+![命令面板](docs/screenshots/06-cmdk.png)
+
 > **数据按账户存放，全部是 .json 文件**——公司电脑会锁定被编辑过的 Office / txt / pdf，
 > 本工具不产生任何这类文件。
 
@@ -336,6 +364,7 @@ node tests/sync_parity.js ps1      # 只跑 PowerShell 实现
 node tests/qa_fix_regression.js    # QA 独立回归：服务端静默失败类缺陷（92 条）
 powershell -File tests/_ps1_parse_check.ps1   # PowerShell 语法解析 + 含中文脚本必须带 UTF-8 BOM
 node tests/flowtask_e2e.js         # 真浏览器 E2E（Edge headless + CDP，57 条）
+FLOWTASK_SHOTS_DIR=docs/screenshots node tests/flowtask_e2e.js --shots   # 重拍 README 产品图（演示数据，改 UI 后跑）
 node tests/flowtask_e2e.js --selftest   # 只体检环境（Edge 是否存在、端口、服务能否起）
 node tests/flowtask_e2e.js --grep "E2E-2,M22"   # 只跑名字命中的场景（调试定位用，逗号分隔；门禁跑全量）
 node tests/flowtask_e2e.js --headed --dump-console   # 有头调试 + 打印页内 console

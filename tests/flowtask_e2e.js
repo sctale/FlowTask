@@ -27,7 +27,7 @@ const { spawn, spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const SERVER_JS = path.join(ROOT, 'flowtask_server.js');
 const REAL_DATA = path.join(ROOT, 'flowtask_data.json');
-const SHOTS_DIR = path.join(ROOT, 'e2e-shots');
+const SHOTS_DIR = process.env.FLOWTASK_SHOTS_DIR || path.join(ROOT, 'e2e-shots');
 
 const APP_HOST = '127.0.0.1';
 const APP_PORT = 5178;                     // 前端硬编码，必须用这个端口
@@ -38,6 +38,7 @@ const FLAGS = {
   headed: ARGV.includes('--headed'),
   keep: ARGV.includes('--keep'),
   selftest: ARGV.includes('--selftest'),
+  shots: ARGV.includes('--shots'),
   dumpConsole: ARGV.includes('--dump-console'),
   grep: (ARGV.find((a, i) => ARGV[i - 1] === '--grep') || '') || process.env.FLOWTASK_E2E_GREP || '',
 };
@@ -649,6 +650,60 @@ function defineSmokeScenarios(getPage){
   });
 }
 
+/* ================= README 文档截图模式（--shots） =================
+ * 用演示数据 + 1600×1000@2x 视口拍一组产品图，输出目录由 FLOWTASK_SHOTS_DIR 指定。
+ * 复用全套环境（临时数据目录/无头 Edge），只把场景换成截图。 */
+function defineDocShots(getPage, loginAs){
+  const shot = async (page, name, waitExpr, extraWait = 500) => {
+    await page.waitFor(waitExpr, { timeout: 15000, name: name + ' 渲染' });
+    await sleep(extraWait);
+    const file = await page.screenshot(name);
+    assertTruthy(fs.statSync(file).size > 40000, name + ' 截图过小：' + file);
+    console.log('        写出 ' + file);
+  };
+  t('SHOT-0 登录 admin 并进入就绪态', async () => {
+    const page = getPage();
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 2, mobile: false });
+    await loginAs('admin', 'admin123', 'docs');
+    await page.evaluate(`(() => { maskRemoveAll(); return true; })()`);   // 关掉首次欢迎弹窗
+  });
+  t('SHOT-1 今天页', async () => {
+    const page = getPage();
+    await page.evaluate(`nav('#/')`);
+    await shot(page, '01-today', `!!document.querySelector('.home-primary')`);
+  });
+  t('SHOT-2 列表视图', async () => {
+    const page = getPage();
+    await page.evaluate(`(() => { const p = DB.projects.find(x=>!x.archived); nav('#/project/' + p.id + '/list'); return true; })()`);
+    await shot(page, '02-list', `document.querySelectorAll('#proj-body .task-row').length > 0`);
+  });
+  t('SHOT-3 看板视图', async () => {
+    const page = getPage();
+    await page.evaluate(`(() => { const p = DB.projects.find(x=>!x.archived); nav('#/project/' + p.id + '/board'); return true; })()`);
+    await shot(page, '03-board', `document.querySelectorAll('.board-card').length > 0`);
+  });
+  t('SHOT-4 排期（甘特）', async () => {
+    const page = getPage();
+    await page.evaluate(`(() => { const p = DB.projects.find(x=>!x.archived); nav('#/project/' + p.id + '/gantt'); return true; })()`);
+    await shot(page, '04-gantt', `!!document.querySelector('.gantt-wrap') && !document.querySelector('.gantt-empty')`, 700);
+  });
+  t('SHOT-5 任务详情抽屉', async () => {
+    const page = getPage();
+    await page.evaluate(`(() => { const p = DB.projects.find(x=>!x.archived); nav('#/project/' + p.id + '/list'); return true; })()`);
+    await page.waitFor(`document.querySelectorAll('#proj-body .task-row').length > 0`, { name: '列表先就绪' });
+    await page.evaluate(`(() => { const t = DB.tasks.find(x => x.comments && x.comments.length) || DB.tasks[0]; openDrawer(t.id); return true; })()`);
+    await shot(page, '05-drawer', `document.getElementById('drawer').classList.contains('on')`, 700);
+  });
+  t('SHOT-6 Ctrl+K 命令面板', async () => {
+    const page = getPage();
+    await page.evaluate(`(() => { closeDrawer(); openCmdk(); return true; })()`);
+    await page.waitFor(`document.getElementById('cmdk').classList.contains('on')`, { name: '面板打开' });
+    await page.evaluate(`(() => { const i = document.getElementById('cmdk-input'); i.value = '项目'; i.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await shot(page, '06-cmdk', `document.querySelectorAll('#cmdk-list [data-cmdk]').length > 0`, 400);
+    await page.evaluate(`(() => { closeCmdk(); return true; })()`);
+  });
+}
+
 /* ================= 主流程 ================= */
 (async () => {
   if(FLAGS.selftest){ await selftest(); return; }
@@ -696,13 +751,17 @@ function defineSmokeScenarios(getPage){
     ACTIVE_PAGE = page;
     await page.waitFor(`!!document.getElementById('auth-page') && document.readyState === 'complete'`, { timeout: 20000, name: '初始页面加载' });
 
-    defineSmokeScenarios(() => page);
-    /* loginAs：多账户场景共用的稳定登录封装（真实点击 + 落点取证 + requestSubmit 兜底） */
-    const ctx = { t, assertTruthy, assertEq, assertMatch, getPage: () => page,
-      getBrowser: () => browser, getBase: () => APP_BASE, loginAs: makeLoginAs(() => page) };
-    defineUxScenarios(ctx);
-    /* 第二批 UX 场景（独立文件，避免单文件过长）：活动折叠 / 滚动位置 / 默认项目 */
-    require('./flowtask_e2e_ux2.js')(ctx);
+    if(FLAGS.shots){
+      defineDocShots(() => page, makeLoginAs(() => page));
+    } else {
+      defineSmokeScenarios(() => page);
+      /* loginAs：多账户场景共用的稳定登录封装（真实点击 + 落点取证 + requestSubmit 兜底） */
+      const ctx = { t, assertTruthy, assertEq, assertMatch, getPage: () => page,
+        getBrowser: () => browser, getBase: () => APP_BASE, loginAs: makeLoginAs(() => page) };
+      defineUxScenarios(ctx);
+      /* 第二批 UX 场景（独立文件，避免单文件过长）：活动折叠 / 滚动位置 / 默认项目 */
+      require('./flowtask_e2e_ux2.js')(ctx);
+    }
     await runSuite();
     await printAllConsole(browser);
   }catch(e){
