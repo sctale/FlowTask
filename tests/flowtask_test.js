@@ -644,6 +644,8 @@ function uxTests(){
   ok('守卫：Ctrl+K 命令面板已就位（openCmdk + KEYMAP 单一来源）',
     html.includes('function openCmdk') && html.includes('const KEYMAP') && html.includes("e.key==='k'||e.key==='K'"));
   ok('守卫：项目标识用首字母色块（proj-ic）', html.includes('.proj-ic{') && html.includes('class="proj-ic"'));
+  ok('v2.1.2 守卫：全局 [hidden] 兜底存在（防 display 规则压掉 hidden 致空按钮外露）',
+    html.includes('[hidden]{display:none !important}'));
   ok('守卫：状态色板只在 :root 定义并被引用',
     /--st-doing-dot:/.test(html) && /\.status-pill\.s-doing\{[^}]*var\(--st-doing-fg\)/.test(html)
     && !/\.status-pill\.s-doing\{[^}]*#2563eb/.test(html));

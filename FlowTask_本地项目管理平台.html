@@ -63,6 +63,9 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;outlin
 ::placeholder{color:var(--text-faint)}
 a{color:var(--blue);text-decoration:none}
 svg{display:block;flex-shrink:0}
+/* 全局兜底：带 display 规则的组件（.store-status/.btn 等）会把 UA 的 [hidden]{display:none} 压掉，
+   导致「未配置同步时顶栏露出一个空药丸按钮」这类隐形缺陷——hidden 属性必须说到做到 */
+[hidden]{display:none !important}
 
 /* ============ 通用控件 ============ */
 .btn{
@@ -1116,7 +1119,7 @@ function bindMemberChips(scope){
 /* 下面这处 BEGIN/END 成对标记是修好的错位：原先 990 那段一直没能收尾，
    而 toast/PRIO/prioName 这一段只有 END 没有 BEGIN，整段落在测试沙箱之外 */
 /*==TEST-BEGIN==*/
-const APP_VERSION = '2.1.1';   /* 与 CHANGELOG.md 顶部版本号保持一致（单测有守卫断言） */
+const APP_VERSION = '2.1.2';   /* 与 CHANGELOG.md 顶部版本号保持一致（单测有守卫断言） */
 /* 任务状态的唯一真相源：名称 / 样式类 / 色板令牌 / 选择器 全部从这里派生 */
 const STATUS_DEF = [
   { st:'todo',   name:'待办',   cls:'s-todo',   dot:'var(--st-todo-dot)'   },

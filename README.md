@@ -2,7 +2,7 @@
 
 单文件、零依赖、本地优先的团队任务管理工具。整个前端是一个 HTML 文件，数据落在本机的 JSON 文件里，配合 Windows 自带的 PowerShell（或 Node.js）存储服务运行，拷走整个文件夹即可换机使用。
 
-当前版本 **v2.1.1**（变更记录见 [CHANGELOG.md](CHANGELOG.md)，设计规范见 [DESIGN.md](DESIGN.md)）。
+当前版本 **v2.1.2**（变更记录见 [CHANGELOG.md](CHANGELOG.md)，设计规范见 [DESIGN.md](DESIGN.md)）。
 
 ## 两种用法
 
@@ -350,7 +350,7 @@ node smoke_share.js "\\\\文件服务器\\共享\\FlowTask"      # 或先设 FLO
 
 ```
 node tests/syntax_check.js         # 语法闸门：内联脚本编译期校验 + 顶层重复声明 + 全部服务端与同步脚本（12 项）
-node tests/flowtask_test.js        # 单测 + UX 回归与守卫 + Node 服务端集成（330 条；末尾另有 1 条条数一致性守卫，故实跑显示 331）
+node tests/flowtask_test.js        # 单测 + UX 回归与守卫 + Node 服务端集成（331 条；末尾另有 1 条条数一致性守卫，故实跑显示 332）
 node tests/flowtask_test.js ps1    # PowerShell 服务端冒烟测试（11 条）
 node tests/server_parity.js        # 双服务端对等：同一套场景分别跑 Node 与 PowerShell（83×2 条）
 node tests/server_parity.js ps1     # 只跑 PowerShell 实现
