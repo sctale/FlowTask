@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FlowTask",
+  "mainBinaryName": "FlowTask",
+  "version": "2.1.1",
+  "identifier": "dev.flowtask.desktop",
+  "build": {},
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {
+      "../../FlowTask_本地项目管理平台.html": "app.html"
+    },
+    "externalBin": ["binaries/flowtask-server"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "startMenuFolder": "FlowTask",
+        "languages": ["SimpChinese"]
+      }
+    }
+  }
+}

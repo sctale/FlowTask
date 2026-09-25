@@ -1,0 +1,251 @@
+{
+  "skill": "audit",
+  "round": 3,
+  "generated_at": "2026-09-25T02:18:50.874Z",
+  "project_name": "FlowTask 本地项目管理平台",
+  "target": {
+    "type": "code",
+    "reference": "FlowTask/FlowTask_本地项目管理平台.html (v1.10.0, 7571 行单文件) + DESIGN.md + README + e2e-shots 截图",
+    "pages_audited": [
+      "首页",
+      "我的任务",
+      "收件箱",
+      "项目-概览",
+      "项目-列表",
+      "项目-看板",
+      "项目-日历",
+      "项目-进度(甘特)",
+      "任务详情抽屉",
+      "登录/注册",
+      "引导弹窗",
+      "成员弹窗"
+    ]
+  },
+  "audit_framework": [
+    "Nielsen-10",
+    "responsive",
+    "performance"
+  ],
+  "scope_note": "第三轮增量走查：聚焦 v1.10.0 现状残留（两轮 remediation 后）+ Asana 味专项。v1.6–v1.10 已修复的安全/同步/权限类问题不重复列出。",
+  "findings": [
+    {
+      "id": "r3-1",
+      "heuristic": "consistency",
+      "severity": "major",
+      "description": "Logo「三点+连线」与 Asana 标志性三圆点轨道 logo 高度同构，出现在顶栏、登录页、桌面图标三处——是全站最强的 Asana 信号",
+      "evidence": "L951-953 topbar logo-mark SVG；L908-910 auth logo；flowtask.png / flowtask.ico",
+      "suggestion": "重做品牌图形：走「本地优先」意象（单文件/盒子/对勾/局域网节点皆可），三处 + 桌面图标统一替换",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-2",
+      "heuristic": "consistency",
+      "severity": "major",
+      "description": "主色与 Asana 同为珊瑚红：--brand:#E24D5C（代码注释自认「珊瑚红主色（Asana 风格）」），DESIGN.md 风格定位写「仿 Asana 的团队协作工具」、README 首行「仿 Asana」",
+      "evidence": "L11；DESIGN.md L6；README L3",
+      "suggestion": "选新品牌色（深青/靛蓝/暖棕等，避开珊瑚红+白底高密度组合）；定位语改为「本地优先·单文件·局域网协作」，色彩跟随新定位",
+      "effort": "medium"
+    },
+    {
+      "id": "r3-3",
+      "heuristic": "real-world-match",
+      "severity": "major",
+      "description": "侧栏「首页/我的任务/收件箱」+ 铃铛未读角标是 Asana 导航三件套的原样复刻，用户会条件反射归类为 Asana 仿品",
+      "evidence": "L3044-3058 侧栏导航；L968-971 顶栏铃铛；e2e-shots/home-logged-in.png",
+      "suggestion": "按自身心智改名与排序：首页→今天、收件箱→动态（或通知）；我的任务保留（已是行业通用词）；或重组为「个人/团队/系统」三段",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-4",
+      "heuristic": "real-world-match",
+      "severity": "minor",
+      "description": "项目视图页签「概览/列表/看板/日历/进度」与 Asana 的 Overview/List/Board/Timeline/Calendar 一一对位",
+      "evidence": "L1109 VIEW_NAME；L3786-3803 view-tab",
+      "suggestion": "列表/看板/日历是品类通用词不必动；「概览」→「详情」、「进度」→「排期」或「甘特」即可去掉照搬感",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-5",
+      "heuristic": "flexibility",
+      "severity": "major",
+      "description": "Tab+Q 快速添加是 Asana 招牌快捷键，且首次引导弹窗教用户学这个动作",
+      "evidence": "L964 按钮 title；L6717/6968/7030 注释「对标 Asana」；home-logged-in.png 引导弹窗第 2 步",
+      "suggestion": "升级为 Ctrl+K 命令面板（搜索+新建+跳项目+切视图一体），建立自己的 keyboard-first 招牌；Tab+Q 退役，代码注释删「对标 Asana」",
+      "effort": "medium"
+    },
+    {
+      "id": "r3-6",
+      "heuristic": "real-world-match",
+      "severity": "major",
+      "description": "「发布状态更新」+ 三色心情（进展正常/存在风险/进度落后）是 Asana Status Updates 的直接移植，功能辨识度过高",
+      "evidence": "L4587-4626 概览状态更新区；mood-btn 三胶囊；L1030 心情白名单",
+      "suggestion": "保留功能改表达：改名「项目播报/本周进展」，三色 pill 改单行进度%+一句话，或红绿灯小圆点+文字（去掉胶囊底色）",
+      "effort": "medium"
+    },
+    {
+      "id": "r3-7",
+      "heuristic": "aesthetic",
+      "severity": "minor",
+      "description": "480px 右侧任务抽屉 + 空心圆勾选完成 + 彩虹实心标签 pill + 彩色圆点项目条的组合拳构成「Asana 感」视觉印象",
+      "evidence": "L35 --detail-w；check-circle 全站；tag-chip；侧栏 proj-item .dot",
+      "suggestion": "挑 1-2 个最显眼的换即可：项目条圆点→首字母色块（Notion 式），或勾选圆→方形复选框（Jira/Todoist 式）；不必全换",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-8",
+      "heuristic": "consistency",
+      "severity": "minor",
+      "description": "代码内 13 处「对标 Asana/模仿 Asana」注释 + README 首行「仿 Asana」——内部定位外泄，产品被自我定位为仿品",
+      "evidence": "L1007/1264/1441/3325/4127/4190/4816/6717/6908/6933/6968/7030；README L3；DESIGN.md L6",
+      "suggestion": "注释改为陈述自身设计意图（写清为什么这样做）；README 定位语重写为「单文件、零依赖、本地优先的团队任务管理」",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-9",
+      "heuristic": "consistency",
+      "severity": "major",
+      "description": "DESIGN.md 与实现两张皮（第二轮 F603/F604/F606/F607/F611 未收口）：h1 实际 22px vs 规范 --fs-lg 19px；圆角 35 处档位外硬编码；z-index 20 个声明 vs 规范七档「不得插队」",
+      "evidence": "L418 font-size:22px vs L48 --fs-lg:19px；grep border-radius 35 处档位外值；z-index 20 处",
+      "suggestion": "先裁决（现实合理改规范、否则 sweep 代码），再加源码守卫单测：组件规则里禁止档位外圆角/裸 hex/新增 z-index 档",
+      "effort": "medium"
+    },
+    {
+      "id": "r3-10",
+      "heuristic": "aesthetic",
+      "severity": "major",
+      "description": "约 50 处 emoji 当功能图标（侧栏 🔒🌐⚠️、管理员 👁、存储胶囊 💾、归档横幅 📦、抽屉 🗑⧉、评论 💬、空态 ✓🎉），违反 DESIGN 自家 Don’t，是「原型感」与廉价仿品感的共同来源",
+      "evidence": "grep 统计 🔒×6 👁×5 💾×5 🗑×4 ⧉×5 等；L3062-3075 scope-badge；L4607 mood",
+      "suggestion": "SVG 基建已齐（侧栏/页签均为内联 SVG），把锁/地球/警告/眼/垃圾桶/复制/铃 7 个高频图标换成同 stroke 风格 SVG",
+      "effort": "medium"
+    },
+    {
+      "id": "r3-11",
+      "heuristic": "visibility",
+      "severity": "minor",
+      "description": "抽屉内字段编辑反馈不一致（第二轮 F705 残留）：改优先级/描述/重复弹 toast，改标题/负责人/日期完全静默",
+      "evidence": "openDrawer 各字段 onchange 对比",
+      "suggestion": "定一条反馈语法：就地可见的变更不弹 toast，跨页/不可见后果才弹；按此统一一遍",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-12",
+      "heuristic": "performance",
+      "severity": "major",
+      "description": "长列表无虚拟化/分页（第一轮 audit-53 partial 残留）：300 任务项目一次性 innerHTML 全量渲染，首绘与每次状态切换重绘都卡",
+      "evidence": "e2e-shots/perf-300-list.png；renderListView 全量重建",
+      "suggestion": "分组折叠 + 每组初始 100 条「显示更多」，或 IntersectionObserver 懒渲染；优先列表视图",
+      "effort": "medium"
+    },
+    {
+      "id": "r3-13",
+      "heuristic": "user-control",
+      "severity": "minor",
+      "description": "撤销窗口固定 6 秒且删除连带丢通知、撤销不恢复（第一轮 audit-47 残留）",
+      "evidence": "toast 撤销 timeout；删除时清理 notifications",
+      "suggestion": "撤销延到 10s + 回收站顶部保留「最近删除」可再撤销；删除时存通知快照、恢复时回写",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-14",
+      "heuristic": "real-world-match",
+      "severity": "minor",
+      "description": "「卡片」措辞残留：成员弹窗写「点击成员卡片选择 / 取消加入项目」，与术语表（工作对象统一叫任务）不符",
+      "evidence": "L7141",
+      "suggestion": "改为「点击成员选择 / 取消」",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-15",
+      "heuristic": "recognition",
+      "severity": "minor",
+      "description": "顶栏「＋ 添加任务」与首页统计行同名按钮同屏重复出现，且顶栏按钮 title 承载 Tab+Q 教学文案",
+      "evidence": "L964 topbar；renderHome 统计行 #home-qa",
+      "suggestion": "保留顶栏一个主入口，首页降级为文字链；文案随 r3-5 快捷键改造一并更新",
+      "effort": "quick-win"
+    },
+    {
+      "id": "r3-16",
+      "heuristic": "help-docs",
+      "severity": "minor",
+      "description": "快捷键文档三处手写（引导弹窗、帮助面板、README），改键需人肉同步",
+      "evidence": "onboarding 文案；帮助面板；README 快捷键表",
+      "suggestion": "单一 KEYMAP 常量派生所有展示位",
+      "effort": "quick-win"
+    }
+  ],
+  "opportunities": [
+    {
+      "title": "品牌身份重塑：从「仿 Asana」到「本地优先任务台」",
+      "addresses_findings": [
+        "r3-1",
+        "r3-2",
+        "r3-8"
+      ],
+      "priority": "high",
+      "rationale": "logo、主色、定位语是 Asana 味的最大来源，也是成本最低的三刀：换 logo、换品牌色、README/DESIGN/代码注释去「仿 Asana」。产品真正的差异化资产（单文件零依赖、数据在自己盘上、局域网协作、已暂停状态、三路合并）从未在视觉与叙事上被主张。"
+    },
+    {
+      "title": "导航与功能命名去 Asana（只换壳不换功能）",
+      "addresses_findings": [
+        "r3-3",
+        "r3-4",
+        "r3-6",
+        "r3-7",
+        "r3-14"
+      ],
+      "priority": "high",
+      "rationale": "首页/我的任务/收件箱三件套、概览/进度页签、状态更新三色心情是 Asana 用户的「既视感触发器」；功能本身都成立，改命名与表达形态即可。品类通用词（列表/看板/日历/任务/子任务）保留，不为差异化牺牲可用性。"
+    },
+    {
+      "title": "键盘优先的身份招牌：Ctrl+K 命令面板替换 Tab+Q",
+      "addresses_findings": [
+        "r3-5",
+        "r3-15",
+        "r3-16"
+      ],
+      "priority": "medium",
+      "rationale": "Tab+Q 是 Asana 招牌快捷键且被引导教学；与其删掉不如换成自己的招牌动作——命令面板聚合搜索/新建/跳项目/切视图，是 Linear 式高效身份，也是本地工具用户最爱的交互。顺带统一快捷键文档单一来源。"
+    },
+    {
+      "title": "设计系统收口：令牌裁决 + emoji 图标清零 + 反馈语法",
+      "addresses_findings": [
+        "r3-9",
+        "r3-10",
+        "r3-11"
+      ],
+      "priority": "medium",
+      "rationale": "两轮走查遗留的视觉债（DESIGN.md 两张皮、50 处 emoji 功能图标、编辑反馈不一致）是「成品感」的最后一段路；配源码守卫单测防回潮。"
+    },
+    {
+      "title": "规模化收尾：列表懒渲染 + 撤销增强",
+      "addresses_findings": [
+        "r3-12",
+        "r3-13"
+      ],
+      "priority": "low",
+      "rationale": "300+ 任务场景的退化型问题，团队用得越久越明显；但当前无真实大数据量反馈，排在身份重塑之后。"
+    }
+  ],
+  "summary": {
+    "total_findings": 16,
+    "by_severity": {
+      "major": 8,
+      "minor": 8
+    },
+    "by_heuristic": {
+      "consistency": 4,
+      "real-world-match": 4,
+      "flexibility": 1,
+      "aesthetic": 2,
+      "visibility": 1,
+      "performance": 1,
+      "user-control": 1,
+      "recognition": 1,
+      "help-docs": 1
+    },
+    "top_opportunities": [
+      "品牌身份重塑：从「仿 Asana」到「本地优先任务台」",
+      "导航与功能命名去 Asana（只换壳不换功能）"
+    ]
+  }
+}

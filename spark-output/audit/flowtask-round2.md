@@ -1,0 +1,1000 @@
+# 体验走查报告
+
+> 生成时间：2026-09-05T02:06:17.665Z ｜ 事实源：`findings-round2.js`（本报告全部计数由 builder 机器派生，禁止手改）
+
+## 摘要（auto-derived）
+
+- 发现总计：**91** 条（blocker 12 / high 30 / medium 39 / low 10）
+- 已复核 91 条 / 未复核 0 条
+- 问题最集中的文件：`FlowTask_本地项目管理平台.html`(83)、`flowtask_server.js`(7)、`flowtask_server.ps1`(1)
+
+## 维度覆盖矩阵
+
+| 维度 | 名称 | 发现数 | 状态 |
+|---|---|---|---|
+| interaction-binding | 交互绑定与事件处理 | 7 | ✅ 已覆盖 |
+| state-edge | 状态与异常态（空/加载/错误/边界） | 7 | ✅ 已覆盖 |
+| copy | 文案与提示 | 10 | ✅ 已覆盖 |
+| a11y | 可访问性 | 12 | ✅ 已覆盖 |
+| data-safety | 数据安全与持久化 | 22 | ✅ 已覆盖 |
+| visual-tokens | 视觉一致性 | 24 | ✅ 已覆盖 |
+| flow-feedback | 操作反馈与流程闭环 | 9 | ✅ 已覆盖 |
+
+## 交互绑定与事件处理（interaction-binding）— 7 条
+
+### 🟠 high F101：多选批量条挂在 body 上，离开项目页后仍悬浮在所有页面且按钮可触发（含「删除」） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3244`
+- 证据：
+  ```
+  document.body.appendChild(bar);
+    bar.onclick = (e)=>{
+      const b = e.target.closest('button'); if(!b) return;
+  ```
+- 说明：removeBatchBar 只在 renderProject 的 pid/view 切换守卫里调用（2936/2953），renderContent 的 home/inbox/trash/settings 分支从不清理。批量条 position:fixed;z-index:700，切到首页后依然悬浮且 bar.onclick 仍作用于仍记在 MULTI.ids 里的任务。
+
+### 🟠 high F102：只读视角下抽屉的完成圆点是 pointer 外观的死控件，点击零反馈（列表行同样场景会给拒绝 toast） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3780`
+- 证据：
+  ```
+  <span class="check-circle ${t.completed?'on':''}" id="dt-check" title="${checkTitle(t.completed, t.status)}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5">
+  ```
+- 说明：#dt-check 无条件渲染且 .check-circle 带 cursor:pointer，但处理器只在 if(canWrite) 块内赋值（3875），只读分支（4136-4139）只补绑 [data-st-open]。列表行上的同一个圆点对只读用户至少有「当前角色为只读访客，无权修改任务」提示（2676），抽屉里这个则是点了完全没反应——与上一轮用户报的「按钮没反应」同一类缺陷。
+
+### 🟠 high F103：openDrawer 在重绘 drawer-body 之前就调用 enhanceA11y，新渲染的抽屉控件永远拿不到键盘属性 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3729`
+- 证据：
+  ```
+  $('#drawer').classList.add('on');
+    enhanceA11y($('#drawer-body'));
+    $('#drawer-mask').classList.add('on');
+  ```
+- 说明：enhanceA11y 之后第 3778 行才 $('#drawer-body').innerHTML = ... 整块重绘（openSubDrawer 同型：4186 enhance、4217 重绘），被增强的是上一次打开的旧节点。于是抽屉里的 check-circle / tag-chip / st-del / data-st-open 全部没有 tabindex/role，Enter·Space 激活通道（2240-2248）对它们整体失效。
+
+### 🟡 medium F104：A11Y_CLICKABLE 白名单漏掉多个已绑定的可点控件（add-task-row / board-add-card / cal-more / f-sum / 已指派的 st-assign） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2225`
+- 证据：
+  ```
+  const A11Y_CLICKABLE = '[data-nav],[data-task],[data-st-open],[data-fstatus],[data-fassignee],[data-fprio],[data-ftag],'
+  ```
+- 说明：这些元素都以 onclick 绑定却不在白名单里，键盘用户无法触达：列表 .add-task-row（3040 渲染 / 2655 绑定）、看板 .board-add-card（3331/3342）、日历 .cal-more[data-more]（3490/3501）、筛选摘要 .f-sum（2846/2903）；且子任务已指派负责人时 .st-assign 内渲染的是不可聚焦的 .avatar 而非 .avatar-btn（3766-3768）。
+
+### 🟡 medium F105：快速添加里按 Enter 点的是全文档第一个 .modal-ok，弹窗堆叠时会误触发下层弹窗的确认动作 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5142`
+- 证据：
+  ```
+  i.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('.modal-ok').click(); } });
+  ```
+- 说明：$('.modal-ok') 是 document 范围选择器，返回 DOM 里最早的遮罩。openConfirm 不含输入框、不触发 typing 守卫，因此确认框在下层、快速添加叠在上层时，在标题里按 Enter 会点击下层确认框的「确定」——等于替用户确认了那个动作（共享/收回项目、保留我的改动等）。
+
+### ⚪ low F106：批量条退出按钮写着「退出多选（Esc）」，但全局 Esc 链里没有多选分支 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5234`
+- 证据：
+  ```
+  if(e.key==='Escape'){
+      if($('#popover')){ removePopover(); return; }
+      if(MODAL_STACK.length){ closeTopModal(false); return; }
+  ```
+- 说明：Esc 处理链只覆盖 popover / 弹窗栈 / 抽屉，不检查 MULTI.on。多选态下按 Esc 什么都不发生，与界面承诺不符，用户只能去找悬浮的 ✕。
+
+### ⚪ low F107：刚进入多选模式就弹出「0 项已选」的批量条，且「删除 / 标记完成」按钮全部可点 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3070`
+- 证据：
+  ```
+      showBatchBar(proj);
+    } else {
+      removeBatchBar();
+  ```
+- 说明：MULTI.on 为真即无条件 showBatchBar，而 showBatchBar 不校验 ids.size（3231-3237 直接渲染 `${MULTI.ids.size} 项已选` 和全部动作按钮）。空选状态下悬浮条占住底部并摆出一排可点动作，点了才被告知没选中。
+
+## 状态与异常态（空/加载/错误/边界）（state-edge）— 7 条
+
+### 🔴 blocker F201：导入校验太浅：脏备份先落盘再渲染，renderApp 无 try/catch → 全站白屏且刷新后无法恢复 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:4613`
+- 证据：
+  ```
+  for(const label of ['users','projects','tasks']){
+      for(const x of data[label]){
+        if(!x || typeof x !== 'object') return `${IMPORT_LABEL[label]}里有一条记录内容不完整`;
+  ```
+- 说明：validateImportData(4607-4623) 只验 id 与对象形状，不验 projects[].memberIds、tasks[].comments/activities/subtasks；migrateDataInner 只兜底子任务 comments。消费点却直接链式取值：2148 `p.memberIds.includes(ME.id)`、2637 `t.comments.length`、2684 `t.activities.push`。导入流程 4733 先 `DB = data; saveDB();` 落盘，4736 才 renderApp，崩在侧边栏第一步即白屏，且坏数据已写进文件，刷新后 boot 同点再崩。服务端 shapeOk 只验 projects/tasks 是数组，同样拦不住。
+
+### 🟠 high F203：服务端把「读文件报错」与「文件不存在」一律回 204，客户端据此当空库并触发认领/演示注入 ✅已复核
+
+- 位置：`flowtask_server.js:256`
+- 证据：
+  ```
+  fs.readFile(fileOf(name), 'utf8', (err, data) => {
+        if(err){ send(res, req, 204, ''); return; }
+  ```
+- 说明：EBUSY/EACCES/EMFILE（公司机上文件被占用很常见）都走 204；readStoreJSON:1343 把 204 解释为 {ok:true,missing:true}，loadMyStores 返回 personalMissing=true，enterApp:5531 于是走 adoptLegacyData/seedDemoContent——用户看到的是项目全空或凭空多出演示内容。账户表侧已按「严格区分 204 与读取失败」修过（2040），库侧语义没跟上。PS1 同场景（394）在 Stop 策略下裸抛、连接直接断开，两端对同一故障给出两种不同错误态。
+
+### 🟠 high F204：库响应解析失败被静默换成空库，不弹任何错误——用户视角是「数据凭空消失」 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1636`
+- 证据：
+  ```
+  const P = (rp.ok && rp.data) ? rp.data : emptyStore();
+    const S = (rs.ok && rs.data) ? rs.data : emptyStore();
+  ```
+- 说明：readStoreJSON:1341 把 JSON.parse 失败归为 ok:false 但不带原因；loadMyStores 只在 status===401 时报警，其它 ok:false 一律静默 fallback 到 emptyStore，随后渲染零项目空态。错误态被误分类成空态，且 personalMissing=false 使认领兜底也不会触发，用户只能刷新赌下一次响应正常。
+
+### 🟡 medium F206：booting 骨架在会话校验与拉库之前就移除，且这些 fetch 全部无超时——服务半挂时无提示地被按在登录页 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5616`
+- 证据：
+  ```
+  document.body.classList.remove('booting');
+    const user = authReady ? currentSessionUser() : null;
+    if(user && await verifySessionWithServer()){
+  ```
+- 说明：骨架 CSS 只在 body.booting 时显示（113）。5616 之后还要串行跑 verifySessionWithServer、establishSession 的 POST /api/session、loadMyStores 的两个 GET，而 fetchStore(1324) 没有 AbortController（只有 probeStoreSvc 有 1.5s）。PS 版单线程串行处理，任一慢客户端即可让这几个请求排队：此窗口登录页可输入可点击但没有任何「正在恢复会话/加载数据」指示。
+
+### 🟡 medium F207：file:// 直开（纯浏览器缓存）首启时登录页宣传的三组演示账户实际不存在，逐个登录都报「用户名或密码错误」 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:878`
+- 证据：
+  ```
+  <b>演示账户</b>（首次打开自动创建）<br>
+        管理员&nbsp;<span class="cred">admin / admin123</span>
+  ```
+- 说明：该提示是静态 HTML 恒显示。loadAccounts 的本地分支（2026-2032）在 localStorage 为空时返回 users:[]，而 ensureDemoAccounts 的唯一可达调用在 enterApp 登录成功之后（5540）——没有账户就永远登不进去，也就永远不会创建账户。「首次打开自动创建」在离线模式下自相矛盾，首屏错误全靠用户自己猜要改走注册。
+
+### 🟡 medium F210：超过 8MB 的保存体：Node 直接 destroy 连接被误判为「存储服务未响应」并整体切回缓存模式，PS 回 400——大库用户两版表现分裂 ✅已复核
+
+- 位置：`flowtask_server.js:117`
+- 证据：
+  ```
+  size += c.length;
+      if(size > BODY_LIMIT){ req.destroy(); return; }
+  ```
+- 说明：fetch 因连接被掐而 reject → pushStoreSvc:1379 catch → allOk=false → svcMarkDown 弹「⚠️ 文件存储服务未响应」并把顶栏切到仅浏览器缓存。服务明明活着且明确拒收，错误分类失真，也没有「数据超出上限」这一可理解、可行动的边界态。PS1:429 回 400 too large，同一边界两种响应。
+
+### ⚪ low F211：登录后拉取个人库与共享库是串行 await，加载窗口翻倍 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1626`
+- 证据：
+  ```
+  const [rp, rs] = [await readStoreJSON(pf), await readStoreJSON(SHARED_FILE)];
+  ```
+- 说明：数组解构里的两个 await 依次求值，第二个请求要等第一个完整返回；两库读取无并行。叠加 F206 的无骨架窗口与 PS 版单线程队列，首屏可感等待约为必要时间的两倍。
+
+## 文案与提示（copy）— 10 条
+
+### 🟠 high F301：看板视图把工作项称作「卡片」，直接违反自家术语表（同一句里还和「任务」并列指同一对象） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3408`
+- 证据：
+  ```
+  if(!total) return '<div class="board-col-empty">' + (canWrite ? '拖拽卡片到此列，或点下方「＋ 添加任务」' : '此状态还没有任务') + '</div>';
+  ```
+- 说明：README 术语表明令「看板的列也是任务，不叫卡片」。看板空列三处（3407/3408/3409）均写卡片，且同句把「卡片」与「任务」并列。
+
+### 🟠 high F302：项目概览把项目创建人（ownerId）标成「负责人」，与同一面板另一处的正确叫法自相矛盾 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3652`
+- 证据：
+  ```
+  创建于 ${fmtDateFull(proj.createdAt)} · 负责人 ${(DB.users.find(u=>u.id===proj.ownerId)||{}).name||'—'}
+  ```
+- 说明：术语表：项目建立者叫「项目创建人」，与任务负责人（assigneeId）区分、不混用「负责人」。这里取的是 proj.ownerId 却标「负责人」，而同屏「项目成员」区（3660）对同一人正确写作「项目创建人」。
+
+### 🟠 high F303：只读拖拽被拦截时的提示写「卡片已放回原位」，用户可见反馈沿用了被禁称呼 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3379`
+- 证据：
+  ```
+  toast('只读访客不能改变任务状态，卡片已放回原位', 'err')
+  ```
+- 说明：同一措辞另见列表视图 3100。禁词出现在最需要看清楚的结果提示里。
+
+### 🟠 high F304：「共享给团队」确认弹窗向普通用户抛出物理文件名 flowtask_shared.json，且与对称的「收回」分支写法不一致 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5155`
+- 证据：
+  ```
+      ? '共享后，项目成员（当前 ' + proj.memberIds.length + ' 人）都能看到并编辑这 ' + taskCount + ' 个任务；项目会写入 flowtask_shared.json（团队共享库）。'
+      : '收回后，这 ' + taskCount + ' 个任务将只有你能看到——其他成员的项目列表里会消失；项目会写回你的个人库文件。';
+  ```
+- 说明：DESIGN.md 护栏明写不要把内部词汇（rev/token/conflict/JSON/文件名）漏给用户。共享分支给了文件名、收回分支只说「个人库文件」，同概念两处不一致且一处泄漏实现细节。
+
+### 🟡 medium F305：项目建立者称呼漂移：标准词「项目创建人」与「项目创建者」并存 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5290`
+- 证据：
+  ```
+  toast('不能移除项目创建者','err')
+  ```
+- 说明：同一角色「…人 / …者」两套写法（另见 5283「仅项目创建者或管理员可修改…」、5332）。术语表标准是「项目创建人」。
+
+### 🟡 medium F306：同一动作三种动词：新建 / 创建 / 添加在项目与任务两条流程里混用 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5061`
+- 证据：
+  ```
+  }, '创建项目');
+  ```
+- 说明：建项目一处三个词：标题「新建项目」(5043)、侧栏与快捷键「新建项目」(2356/4933)、主按钮「创建项目」(5061)、成功提示「项目已创建」(5059)；快速添加同理「添加任务」(5078/5110) 配「任务已创建」(5108)，日历又叫「快速创建任务」(3474)、「快速建任务」(5562)。
+
+### 🟡 medium F307：首页同一张卡片里：标题写「未来 7 天到期」，空态写「未来一周」 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2466`
+- 证据：
+  ```
+  <h3>未来 7 天到期 <span class="badge">${soon.length}</span></h3>
+  ```
+- 说明：其空态文案（2468）改用「未来一周没有安排好的任务」。同一区间两种表述，用户会怀疑二者是否指同一件事。
+
+### 🟡 medium F308：缓存写失败统一报「本地存储空间不足」——技术归因且不给下一步 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1740`
+- 证据：
+  ```
+  catch(e){ toast('数据保存失败：本地存储空间不足', 'err'); return false; }
+  ```
+- 说明：localStorage 写失败的诱因包括配额、隐私模式、被策略禁用等，未必是「空间不足」；且「存储」是实现层词汇。DESIGN 的错误规范要求「说人话 + 下一步动作」。1785 同款。
+
+### 🟡 medium F309：偏好项「新建任务的默认状态」下拉只有待办/进行中，缺已完成且不说明这层限制 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:4559`
+- 证据：
+  ```
+  <div class="field"><label>新建任务的默认状态</label>
+  ```
+- 说明：全站状态是三态（待办/进行中/已完成），标签泛指全部状态却只列两项（4561-4562）。用户找不到选项时无从判断是设计取舍还是缺项。
+
+### ⚪ low F310：清空回收站写「永久删除」，与两级删除词汇表里的第二级标准词「彻底删除」不一致 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:4801`
+- 证据：
+  ```
+  if(!confirm(`⚠️ 清空回收站？将永久删除 ${total} 项内容，此操作不可恢复！`)) return;
+  ```
+- 说明：术语表规定两级为「删除任务（进回收站）/ 彻底删除（不可恢复）」，此处引入第三套同义表述。
+
+## 可访问性（a11y）— 12 条
+
+### 🔴 blocker F401：账户菜单与退出登录只有鼠标可达：#user-chip 不在键盘增强白名单里，键盘用户永久无法登出或切换账户 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:915`
+- 证据：
+  ```
+  <div class="user-chip" id="user-chip">
+  ```
+- 说明：chip.onclick（5441）是含 #logout-btn 的 #user-menu（display:none，340）的唯一开启路径，而 #user-chip 既无 tabindex 也不在 A11Y_CLICKABLE 内。本机多人共用时「切换账户 / 登出」这一核心安全操作对键盘用户完全不可完成。
+
+### 🟠 high F402：全站 aria-live / role=status / role=alert 命中数为 0：toast、保存状态、冲突告警对读屏完全静默 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:238`
+- 证据：
+  ```
+  #toast-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1000;...}
+  ```
+- 说明：grep aria-live|role="status"|role="alert" 全文 0 命中，而 toast 承载的正是最关键系统反馈：保存失败(1740)、跨页冲突(1436)、服务断连(1672)。顶栏 #store-status 的四态文字轮换同样无播报——读屏用户全程不知道有没有存上。
+
+### 🟠 high F403：抽屉完全没有焦点管理：打开不聚焦、关闭不归还，收起态仍保留全部可 Tab 的幽灵控件 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:522`
+- 证据：
+  ```
+  #drawer{
+    position:fixed;top:0;right:0;bottom:0;width:var(--detail-w);max-width:96vw;...transform:translateX(100%);
+  ```
+- 说明：openDrawer(3714-3731) 只加 class 无 focus()，closeDrawer(4149) 无焦点归还；收起靠 translateX 移出视口但 display 保留，抽屉内 textarea/select 关闭后仍在 Tab 序列。阶段 F 的模态框焦点陷阱不覆盖这个 role=dialog 抽屉；头部「前往项目页」(934) 是 #drawer-body 之外的不可聚焦 span。
+
+### 🟠 high F404：全站 36 个 <label> 无一个带 for，input/textarea/select 无可访问名 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:869`
+- 证据：
+  ```
+  <div class="field"><label>用户名（登录用，唯一）</label><input id="rg-username" ... placeholder="2-20 位字母/数字/中文"></div>
+  ```
+- 说明：grep "<label for" 全文 0 命中，label 都是与控件平级的裸标签（862-872、4517、4542-4571、5004、5044）。读屏聚焦输入框只播报「编辑框」，用户名/密码/确认密码彼此无法区分。
+
+### 🟠 high F405：悬停才显形的操作按钮缺 :focus-within 兜底（全文只有一处），键盘焦点落在 opacity:0 的隐形按钮上 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:425`
+- 证据：
+  ```
+  .section-head .sec-actions{margin-left:auto;display:flex;gap:2px;opacity:0;transition:opacity .15s}
+  ```
+- 说明：同款模式在 486（看板列 .col-actions）、574（子任务删除 .st-del）、591（评论操作 .c-actions）、711（.f-sum b）。enhanceA11y 还专门给 .st-del 补了 tabindex，但聚焦时容器仍 opacity:0——sighted 键盘用户看不到焦点在哪。全文 :focus-within 仅 550 一处。
+
+### 🟠 high F406：三处拖拽（侧栏项目排序 / 列表跨组排序 / 看板跨列改状态）没有任何键盘或触屏等价路径，全站也无右键菜单 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2259`
+- 证据：
+  ```
+  el.draggable = true;
+      el.title = (el.title ? el.title + ' · ' : '') + '上下拖动可调整项目顺序';
+  ```
+- 说明：另两处 3074-3090（任务行）与 3349-3368（看板卡）。grep ArrowUp/上移/下移 无排序命令，grep contextmenu 命中 0；改状态尚有抽屉 pill 兜底，但「顺序」这一维度对非鼠标用户完全不可管理，触屏设备同样无解。
+
+### 🟡 medium F407：通用 popover 的 .po-item 是裸 div + onclick：日历「+N」溢出列表与关注人添加无键盘路径 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3303`
+- 证据：
+  ```
+  $$('.po-item', po).forEach(item=>item.onclick=()=>{ PO_CB && PO_CB(item.dataset.po); });
+  ```
+- 说明：模板里的 `<div class="po-item" data-po=...>`（3262/3506/3925）无 role/tabindex，.po-item 也不在增强白名单内。批量指派可用抽屉 select 兜底，但日历溢出任务（3501→3506）与关注人添加（3924）无任何替代；弹层也没有焦点转移与 Esc 关闭。
+
+### 🟡 medium F408：字段级报错设了 aria-invalid，但错误文案既没 id 也没 aria-describedby，读屏只知「无效」不知错在哪 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1189`
+- 证据：
+  ```
+  el.setAttribute('aria-invalid', 'true');
+    const tip = document.createElement('div');
+    tip.className = 'fld-err-tip';
+  ```
+- 说明：tip 是孤立 div（无 role=alert），控件未被 aria-describedby 指向它，随后 el.focus()（1197）时读屏只播控件名。该函数是全站唯一的字段校验通道（3695、5142 等）。
+
+### 🟡 medium F409：小字配色对比度不足：--text-faint #9aa1ac 白底 ≈2.6:1、已完成 pill #2e9e5b/#e7f6ed ≈3.0:1，多用于 11px ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:658`
+- 证据：
+  ```
+  .status-pill.s-done{background:var(--st-done-bg);color:var(--st-done-fg)}
+  ```
+- 说明：--fs-xs:11px（46）。s-done ≈3.0:1、s-todo #64748b/#eef1f5 ≈4.2:1，均低于 AA 小字 4.5:1；--text-faint 用于 sec-count(424)、col-count(485)、评论操作(593)、时间戳(600)、甘特未排期(838)。
+
+### 🟡 medium F410：品牌红主按钮白字 ≈3.9:1、甘特条橙底白字 ≈2.7:1、保存状态胶囊橙/绿字 ≈2.7-3.4:1，都是 10-13px 关键信息 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:71`
+- 证据：
+  ```
+  .btn-primary{background:var(--brand);color:#fff}
+  ```
+- 说明：#E24D5C on #fff ≈3.86:1，13px 不享受大字豁免。同类：.gantt-bar 10px 白字配 --orange(835/3601)、.store-status 11.5px 橙/绿字(311-313)——后者恰是传达「数据到底存没存上」的关键控件。
+
+### 🟡 medium F411：触控热区仍低于 40px：顶栏图标按钮 ≈30×30、评论操作 ≈19px 高，阶段 F 的扩展自标只有「≥28px」且未覆盖这些控件 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:591`
+- 证据：
+  ```
+  .comment-item .c-actions button{font-size:11px;color:var(--text-faint);...padding:2px 4px;...}
+  ```
+- 说明：11px 文字 + 2px 4px padding ≈19px 命中高度；.btn-icon{padding:6px}(80) 包 18px SVG ≈30×30。132-138 的伪元素热区扩展只覆盖 .check-circle/.sec-actions/.status-pill/.prio-pill。
+
+### 🟡 medium F412：甘特图写死 min-width:760px + 36px/天，两个断点都不做窄屏降级——390px 视口只剩约 130px 可视轨道 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:807`
+- 证据：
+  ```
+  .gantt-grid{min-width:760px;display:grid;grid-template-columns:260px 1fr}
+  ```
+- 说明：3582 内联 grid-template-columns:260px ${days.length*36}px（31 天 ≈1376px）随月长继续变宽；142-170 的断点只处理侧栏/topbar/home-grid。有 overflow:auto + sticky 首列所以不裁切，但逐日信息在手机上基本不可读。
+
+## 数据安全与持久化（data-safety）— 22 条
+
+### 🔴 blocker F501：回收站整页无权限门槛：任何登录用户可「清空回收站」，连带物理删除共享库里他人的删除项 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:4799`
+- 证据：
+  ```
+  const delProjIds = new Set(trash.projects.map(p=>p.id));
+      DB.tasks = DB.tasks.filter(t=>!delProjIds.has(t.projectId));   // 物理清除已删项目的遗留任务
+      DB.trash = { tasks:[], projects:[] };
+  ```
+- 说明：renderTrash(4758) 全程无 P.* 判断（对比数据管理页 4627 有 `if(!P.isAdmin())`），路由 2405 也无门槛。DB.trash 是个人库⊕共享库的合并视图（mergeStores 1607-1610），里面既有我删的也有别人删的共享项目；一次误点即清空整个合并视图并物理删除共享项目的遗留任务，随后 saveDB→splitStores→全文件覆盖 flowtask_shared.json。除 backups/ 外无恢复入口，也没有撤销 toast。恢复按钮（4789-4796）同样对只读访客开放。
+
+### 🔴 blocker F502：splitStores 用「项目是否还在 DB.projects」判归属：项目一进回收站，其共享任务就被搬进删除者的个人库并从共享库消失 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1586`
+- 证据：
+  ```
+  const bucketOf = pid => {
+      const p = (DB.projects || []).find(x => x.id === pid);
+      return projectScopeOf(p) === SCOPE_SHARED ? S : P;
+  ```
+- 说明：trashProjectById(2783) 把项目移出 DB.projects，但按设计它的任务仍留在 DB.tasks（回收站页 4777 明写「其任务仍保留，恢复项目后重新可见」）。此时 bucketOf 查不到项目 → projectScopeOf(undefined) 回落 personal → 一个 scope==='shared' 项目的全部任务在拆分时被塞进删除者的 flowtask_data_<uid>.json，同时从 flowtask_shared.json 整片消失。别人再也看不到这些任务；他们恢复项目只拿到空壳；30 天到期清理(1900) 还会顺手物理删除。归属字段（scope）与运行时可见性（在不在 projects）不同源是根因。
+
+### 🔴 blocker F503：登出 / 切账户不 flush 待推送：400ms 防抖窗口内的最后一次编辑、以及「导入后当前账户不在新数据里」的整库导入结果永久丢失 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2119`
+- 证据：
+  ```
+  function logout(){
+    clearSessionLocal();
+    ...
+    ME = null; DB = null;
+  ```
+- 说明：flushAllSaves 只挂在 pagehide/beforeunload/visibilitychange(1748-1754)，logout 与账户切换都不调用。置空后：本地 250ms 防抖回调首行 `if(!DB) return false`(1738)、服务端 400ms 推送 `if(!ME || !DB) return`(1792) 双双作废。更硬的一条在导入路径：4733 `DB = data; saveDB();` 之后 4735 若当前账户不在新数据里就立刻 logout()——这次整库导入永远不会写文件；而 SVC 模式启动后只以文件为准、从不回读 localStorage（5529-5540），下次保存还会覆盖 DB_KEY，导入内容无任何留底地消失。
+
+### 🔴 blocker F504：账户表读取失败后留下的空表仍会被写回：一次瞬时读失败 + 一次注册即覆盖真实账户表，且注册者自动变管理员 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2040`
+- 证据：
+  ```
+  AUTH = { meta:{ rev:0 }, users: [] };
+      console.warn('账户表读取失败，本次不写入', r.status);
+  ```
+- 说明：该分支只挡住了 ensureDemoAccounts，但 _revs.auth 没有被重置（仍是上次成功读到的 N）。register() 只判 `if(!AUTH)`(2064)，用 `AUTH.users.filter(u=>u.active).length === 0`(2066) 判 isFirst 并授予 admin，随后 pushAuthStore 以 rev=N+1 提交，服务端 `incRev > st.rev` 放行 → 整份账户表被「只剩这个新 admin」的表覆盖，其余账户再也无法登录（个人库文件还在但不可达），越权者拿到管理员。startSvcHealthCheck(1686) 与 retryStoreSvc(1844) 也忽略 loadAccounts() 的 false，把空表带进已登录会话。
+
+### 🔴 blocker F505：Node 版写盘失败被吞掉仍回 200：顶栏显示「已保存」但盘上还是旧数据，且 hash 已更新导致此后永不重试真写（PS 版同场景回 500） ✅已复核
+
+- 位置：`flowtask_server.js:164`
+- 证据：
+  ```
+  fs.writeFile(tmp, text, 'utf8', () => fs.rename(tmp, f, () => resolve()));
+    })).then(then).catch(() => then());
+  ```
+- 说明：writeFile/rename 的 err 参数被完全忽略，.catch 也只是照样调 then。Windows 上目标 json 被编辑器/同步盘/杀软占用时 rename 返回 EBUSY/EPERM 是常态，而 299-302 仍无条件 `st.rev = incRev; st.hash = incHash; sendJson(200)`。客户端把顶栏切成「💾 已保存」并记下 _wrote/_revs，之后同内容重推命中 294-295 的幂等分支返回 noop:true，永远不再真正写盘；唯一的新数据留在 .tmp 里，下次写入即被覆盖。两版实现对同一次失败磁盘写不等价（PS1:455-463 明确 try/catch → 500）。
+
+### 🔴 blocker F801：会话签发只凭客户端自报 uid、不验证任何凭据：任何拿到页面令牌的本地页面都能换取任意账户的 7 天会话 ✅已复核
+
+- 位置：`flowtask_server.js:214`
+- 证据：
+  ```
+  if(req.method === 'POST' && url.pathname === '/api/session'){
+      if(req.headers['x-flowtask-token'] !== TOKEN){ sendJson(res, req, 403, { ok:false, err:'forbidden' }); return; }
+  ```
+- 说明：该端点只要求页面令牌（注入在托管 HTML 里:313，且 ALLOWED_ORIGINS 含 'null':45 —— file:// 页面也能从 GET /api/token 领取:207），body 里自报的 uid 只要存在于账户表且 active 即签发 HMAC 会话。密码校验只发生在纯前端 login()(2074)，服务端从不验证，而个人库路由完全以该 uid 为准(182-184)。攻击链：领 token → 读账户表拿任意 uid → 换会话 → 读写其个人库。PS1:351 同构。「数据跟随账户」与 7 天免登录的前提（会话=已证明身份）被整体绕过。
+
+### 🔴 blocker F802：账户表与旧版全量数据文件只需页面令牌即可读写：可拖走全部密码哈希，也可把任意账户改成 admin 或替换他人哈希后登录 ✅已复核
+
+- 位置：`flowtask_server.js:178`
+- 证据：
+  ```
+  if(name === LEGACY_NAME) return { ok:true, uid:null };      // 兼容期：旧单文件仍只需令牌
+    if(isAuthFile(name)) return { ok:true, uid:null };          // 账户表：注册/登录需要能读写
+  ```
+- 说明：GET /api/db?file=flowtask_auth.json 凭页面 token 即返回全部账户（含 salt + PBKDF2 哈希，算法在 HTML 1240-1249 是公开的）；GET /api/db?file=flowtask_data.json 不需任何会话即可拉取整份历史团队数据（该文件在本目录仍真实存在）。写侧同样不设防：saveAuth 走同一通道，任何人可自升 admin，P 权限体系（2131-2149）的根被架空。
+
+### 🔴 blocker F803：管理员把别人的共享项目「收回为个人」= 整项目连任务划进管理员自己的个人库，原创建人永久看不见 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5149`
+- 证据：
+  ```
+  if(!(P.isAdmin() || proj.ownerId === ME.id)) return toast('只有项目创建人或管理员能改变项目归属', 'err');
+  ```
+- 说明：5156 的确认文案自述「收回后……项目会写回你的个人库文件」，此处的「你」是操作者：落盘按 scope 物理路由到 personalFileOf()＝ME.id 的文件(1286/1586)。因此 admin 对 ownerId≠admin 的共享项目点收回，项目连同全部任务进入管理员个人库；原 owner 的可见性判据是 memberIds(2148) 而该文件他人不可读，于是他在任何库里都看不到自己的项目，而改回归属的唯一入口(5149)又要求他已是成员/管理员。数据「跟随操作者」而非「跟随账户」。
+
+### 🔴 blocker F805：「＋成员」对所有 canWrite 成员开放并直接改写 memberIds，与同屏「仅项目创建者或管理员可修改成员」的自述矛盾 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2990`
+- 证据：
+  ```
+  ${canWrite ? `<button class="btn btn-outline btn-sm" id="proj-member-btn">＋成员</button>`:''}
+  ```
+- 说明：canWrite 即 P.canWriteProject，任何普通成员都真(2942)。openMemberModal(5324) 的保存回调只拦「移除创建者」(5332)，无 owner/admin 校验，选中即 `proj.memberIds = ids; saveDB()`(5334) 并触发邀请通知(5335)。而「项目设置」弹窗(5283)白纸黑字写着仅创建者或管理员可改成员，并只对 canAdmin 显示成员卡片(5272)。任一成员可把任何人塞进/踢出共享项目——声明的权限边界被第二条 UI 入口整体绕过。
+
+### 🟠 high F506：Node 端并发 POST：rev 校验与实际推进隔着异步备份与写盘队列，两个写请求都拿 200，后写者静默整片覆盖 ✅已复核
+
+- 位置：`flowtask_server.js:290`
+- 证据：
+  ```
+  const st = loadState(name);
+        const incRev = Number(req.headers['x-flowtask-rev']) || (obj.meta && Number(obj.meta.rev)) || 0;
+  ```
+- 说明：st.rev 只在 rotateBackup 与 atomicWrite 队列回调里推进，而 loadState 返回同一个缓存对象；这段窗口内到达的第二个请求读到旧 st.rev → 同样通过冲突判定 → 覆盖前一次写入，双方都收到 200、_revs 各自前进到同一 N+1，既不报 409 也不留底。命中场景：同账户双标签页改共享库、两个管理员同时改账户表。PS1 主循环单线程串行，不存在该窗口——两端不等价。
+
+### 🟠 high F507：服务重连时对版本更高的远端库做静默整片替换并重置 _wrote 基线：掉线期间的本地编辑不留底、不提示地消失 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1692`
+- 证据：
+  ```
+  const rev = r.ok && r.data ? (Number(r.data.meta && r.data.meta.rev) || 0) : 0;
+          if(rev > (Number(_revs[key]) || 0)) parts[key] = r.data;
+  ```
+- 说明：parts[key] = r.data 之后 mergeStores 把 _wrote 重置为「替换后的内容」，本地那一版既没走 /api/db-conflict 留底，也没有差异摘要与冲突弹窗；而 409 路径的 resolveSvcConflict(1490) 会先留底再让用户选「保留我的改动」。retryStoreSvc(1848-1855) 又是第三套策略（只在个人库确实缺失时回灌缓存快照）。三种策略不一致，且重连这条最激进——服务掉线窗口恰恰是用户编辑最多的时候。
+
+### 🟠 high F508：409 / 401 被当成「服务未响应」：pushStoreSvc 一律返回 false，saveDB 据此关掉 SVC_MODE，此后编辑只进浏览器缓存 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1790`
+- 证据：
+  ```
+  const ok = await pushStoreSvc();
+        if(!ok) svcMarkDown(); else setSaveState('saved');
+  ```
+- 说明：pushStoreSvc 对真 409(1380)、fetch 异常(1379)、以及落到 1387 else 的 401 都返回 false，svcMarkDown 于是置 SVC_MODE=false 并提示「数据已暂存浏览器缓存」。用户刚在冲突框点了「先看最新数据」，后续编辑立刻降级为纯缓存写入；这期间关标签页时 pagehide→flushAllSaves→pushStoreSvc 首行 `if(!SVC_MODE) return false`(1364) 直接放弃。401 场景既不清 SESSION_KEY 也不提示重新登录（只有 loadMyStores 有那段处理），只表现为「存储服务坏了」。
+
+### 🟠 high F509：mergeAuth 同 id 时本地优先：409 合并会把另一页面对既有账户的改密 / 停用 / 角色变更静默回滚 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1397`
+- 证据：
+  ```
+  (mine.users || []).forEach(u => { if(u && u.id){ out.users.push(u); seen.add(u.id); } });
+    (fresh.users || []).forEach(u => { if(u && u.id && !seen.has(u.id)) out.users.push(u); });
+  ```
+- 说明：调用点（1417-1433）里的 mine 恰恰是引发冲突的过期快照，于是 fresh 中同 id 账户的新值（新密码哈希、active:false、role）全部被过期副本顶掉，界面却报「已与其他页面的改动合并」。verifyPassword 的 PBKDF2 透明升级也走 saveAuth(1256) → 两个页面对同一账户的哈希互相回滚，用户按新密码登录失败、或已停用账户重新可用。合并只在「新增账户」这一维成立；1420 的 mineLocal 赋值后从未使用。
+
+### 🟠 high F806：同一份数据三套可见性判据：批量指派给非成员 → 对方收到通知点开被拒 →「我的任务」里却又列得出来 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3261`
+- 证据：
+  ```
+  openPopover(b, DB.users.filter(u=>u.active).map(u=>
+          `<div class="po-item" data-po="${u.id}">`...
+  ```
+- 说明：批量指派的候选是全部活跃用户、无 memberIds 过滤（抽屉单条指派与快速添加下拉却只列成员：3741/5075），但快速添加标题里 @人名 的解析上下文又是全员(5122)，保存时 5103 仍会写入非成员。被指派者从通知点开 → openDrawer 用 P.visibleProject 判定 → 3717「无权查看该任务」；而「我的任务」2529 只判 `assigneeId===ME.id && 项目存在`，任务标题竟又对他可见（同页子任务列表 2543 却检查 memberIds），首页 myTasks 计数同理把打不开的任务算进待办。
+
+### 🟠 high F807：项目名未转义直插共享/收回确认弹窗 → 在打开该弹窗的创建人/管理员会话里执行脚本（存储型 XSS） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5159`
+- 证据：
+  ```
+  html: '「' + proj.name + '」' + (scope === SCOPE_SHARED ? '将变为团队共享项目。' : '将收回为个人项目。') + '\n' + going,
+  ```
+- 说明：proj.name 是用户输入且此处未过 esc()；openConfirm 把 o.html 原样拼进 openModal 的 bodyHTML，而 openModal 是 `mask.innerHTML = ...${bodyHTML}`(4863)。项目名写成 <img src=x onerror=...> 即在 owner/admin 的已登录会话里执行，可读走 localStorage 里的会话令牌(1313) 并以该账户身份读写其全部库。通知/评论/活动/搜索各处均已正确转义，全库仅此一处旁路；配合 F808（任何成员可改共享项目名）即为可用的投毒路径。
+
+### 🟠 high F808：项目设置里的改名 / 改描述不受 canAdmin 约束，任何成员（含通过其它入口打开的人）可改写共享项目的名称与描述 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5285`
+- 证据：
+  ```
+  proj.name = $('#ps-name').value.trim() || proj.name;
+      proj.desc = $('#ps-desc').value.trim();
+      if(canAdmin){
+  ```
+- 说明：#proj-more 齿轮入口无条件渲染（2991，旁边的「＋成员」反而有 canWrite 门控），名称/描述输入框也在 canAdmin 之外（5269-5271），保存回调里这两行落在 if(canAdmin) 之前——改色改人被挡、改名总通行。项目页顶部刚向访客声明「可以看不能改」(2958)，弹窗自身也写着「仅项目创建者或管理员可修改成员与设置」(5283)。共享项目名会写进 flowtask_shared.json 影响全员，同时是 F807 的载体。
+
+### 🟠 high F809：首启自动创建三组弱口令演示账户且无改密提醒；注册页「首位自助注册者成为管理员」在演示账户在场后永不成立 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2001`
+- 证据：
+  ```
+  for(const [u,n,r,p] of [['admin','系统管理员','admin','admin123'],['member','王小米','member','member123'],['guest','李访客','guest','guest123']]){
+  ```
+- 说明：loadAccounts 在账户表确实不存在时直接 ensureDemoAccounts()(2048-2055)——团队共用机器上任何人都能在管理员改密之前用公开的 admin/admin123 拿到全部权限；系统没有首次登录改密提示（个人设置只有自愿改密区块 4568），数据管理页反而把「重置为演示数据」放进危险区(4687)。同时注册页宣称首位注册者成管理员(5456)，而 isFirst 判据(2066) 在演示账户在场后永远为假，真实第一位自助注册用户只会是 member。
+
+### 🟡 medium F511：备份轮转按前缀裁剪：旧版单文件的前缀 flowtask_data_ 会命中所有个人账户的备份并删除它们 ✅已复核
+
+- 位置：`flowtask_server.js:150`
+- 证据：
+  ```
+  const prefix = name.replace(/\.json$/, '') + '_';
+              const backs = files.filter(x => x.indexOf(prefix) === 0 && /\.json$/.test(x)).sort();
+  ```
+- 说明：LEGACY_NAME=flowtask_data.json 时 prefix 为 flowtask_data_，会 startsWith 命中 flowtask_data_u_xxx_20260904_*.json 这类个人账户备份（本机 backups/ 里两类命名同时存在），于是兼容期一次旧文件写入就按时间序删掉各账户最早的副本直到总数 ≤40，与 331 行「每类各留 40 份」的声明相反；unlink 错误同样被吞。PS1:267 的 StartsWith 犯同一个错。
+
+### 🟡 medium F512：PS1 与 Node 不等价：无 rev 的写入把服务端版本基线归零从而永久关闭冲突检测；文件名比较大小写不敏感使同一物理文件裂成两个状态键 ✅已复核
+
+- 位置：`flowtask_server.ps1:458`
+- 证据：
+  ```
+  $st.rev = $incRev; $st.hash = $incHash
+  ```
+- 说明：$incRev 在缺 header 且 obj.meta.rev 缺失时为 0(436-438)，此路径把 $st.rev 写成 0 → GET /api/version 恒回 0(379)，前端 visibilitychange 核对与 pullStore 因此永不拉新，任何过期标签页都能以 rev=1 通过判定并整片覆盖；Node 版是 `st.rev = incRev || st.rev`(301) 保留旧值。另 PS1 的 -notmatch/-eq/-ne(372/286/293) 默认大小写不敏感而 Windows 文件名也不区分大小写：FLOWTASK_DATA_<uid>.JSON 变体能过白名单并落到同一物理文件，却在 $script:fileState 里另起一键，幂等判等与 409 检测双双失效。OPTIONS 允许方法也不一致（Node 含 DELETE:194 / PS1 不含:324）。
+
+### 🟡 medium F810：共享项目对非成员完全隐形：没有「发现 / 申请加入」入口，「共享给团队」的实际语义只是共享给已在名单里的人 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2148`
+- 证据：
+  ```
+  visibleProjects: () => DB.projects.filter(p => !p.archived && (P.isAdmin() || p.memberIds.includes(ME.id))),
+  ```
+- 说明：共享确认文案承诺「项目成员都能看到并编辑」(5154)，但可见性判据仍只有 memberIds；全代码检索无申请加入或公开项目列表入口（只有被动 invite 通知 2175），成员管理弹窗的说明也假定使用者已知晓该项目。团队新人永远发现不了共享项目，只能靠 owner 凭花名册手动勾选——共享语义与用户预期不闭合。
+
+### 🟡 medium F811：写权限被拒的提示一律归因为「只读访客」，成员因非该项目成员被挡时收到误导原因且不知找谁 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2676`
+- 证据：
+  ```
+  if(!t || !P.canWriteTask(t)) return toast('当前角色为只读访客，无权修改任务', 'err');
+  ```
+- 说明：canWriteTask 对「guest 角色」与「member 但不在该共享项目 memberIds 里」都返回 false(2141-2147)，但所有失败路径共用同一句归因（同文案见 3100、3379）。正常成员被告知自己是访客，既没解释真实原因也没给出出路——5149/5290 同类提示倒是写了「找项目创建人或管理员」，唯独任务写路径没有。
+
+### ⚪ low F812：管理员新建成员时初始密码明文预填并常驻屏幕，被建账户无首登强制改密 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:4519`
+- 证据：
+  ```
+  <div class="field"><label>初始密码</label><input id="nu-password" type="text" value="123456"></div>
+  ```
+- 说明：type="text" + 预填值让共享办公环境下旁观即得；与 F809 的演示账户弱口令同属账户生命周期缺少最低安全门槛。另 register() 的「首位=admin」判据(2066) 在 await hashPassword 期间存在跨标签页竞态，两个账户可同时自判 first。
+
+## 视觉一致性（visual-tokens）— 24 条
+
+### 🟠 high F601：同一条批量条里混用彩色 emoji 与文字符号做功能图标，违反 DESIGN.md「不要用 emoji 当功能图标」（上一轮 audit-43 残留） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3238`
+- 证据：
+  ```
+  <button data-ba="assign" title="把选中任务的负责人改为某人">👤 指派…</button>
+      <button data-ba="due" title="统一设置选中任务的截止日期">📅 改日期…</button>
+  ```
+- 说明：batch-bar 六个按钮混用 3 个彩色 emoji（👤📅🗑）与 3 个文字符号（✓↩✕），emoji 不受 .batch-bar button 的字色控制(735-737)，与相邻符号明显不同风格。同类还有顶栏「⚠ 浏览器存储」「＋ 添加任务」紧邻 SVG 帮助图标(906-909)、只读横幅 👁(2957)、归档横幅 📦(2960)、侧栏 💾(2387)、空态 ✓(2461)。全站已有成熟的 stroke=currentColor SVG 体系却被绕过。
+
+### 🟠 high F602：「完成」勾选语义存在三套画法、check-circle 容器五种尺寸，SVG stroke 写死 #fff 且 stroke-width 与图标体系脱节 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3417`
+- 证据：
+  ```
+  <span class="check-circle st-${t.status||'todo'} ${t.completed?'on':''}" title="..." style="width:16px;height:16px"><svg width="9" height="9" ... stroke="#fff" stroke-width="3.5">
+  ```
+- 说明：(a) check-circle+SVG 勾的容器/勾尺寸有 5 种：默认(441-443)、10px 勾(2426/2556/2630)、16px 容器 9px 勾(3417)、15px 容器 8px 勾(3762)、11px 勾(3780/4219)，stroke 全部写死 #fff、stroke-width 3.5（通用图标是 2/2.2 + currentColor）；(b) 纯文本 ✓/○(3506/3507/5389)；(c) 空态大字 ✓(2461)。关闭符号也两套：×(3771) 与 ✕(2846/2860/3243)。看板卡与列表行同屏切换时勾选圈大小肉眼可辨。
+
+### 🟠 high F603：圆角实际出现 11 种取值（DESIGN 只登记四档），同一条任务行即可同屏看到四种圆角（上一轮 audit-24 残留） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:658`
+- 证据：
+  ```
+  .status-pill{...border-radius:var(--radius-pill)}
+  ```
+- 说明：取值分布：2px(496)、3px(107/108/417)、5px(454/644/675)、6px(15 处含 .btn:68)、7px(9 处)、9px(677)、10px(13 处)、12px(5 处)、14px(267/313/692)、16px(723/783)、20px(210/226)。任务行区域同屏出现 status-pill 999px / .tag 20px / .tag-chip 14px / due-badge 5px；同为标签形态的 .tag(226，20px/700) 与 .tag-chip(692，14px/800) 规格不一致。另 DESIGN.md §4 自登记 6/10/14/16px 与 §7「圆角只用四档」互相矛盾。
+
+### 🟠 high F901：首页同屏两个一模一样的红色主按钮「＋ 添加任务」，页头一行还叠了红字+加粗+badge+主按钮四重强调 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2446`
+- 证据：
+  ```
+  <b class="hs-over">${overdue.length} 项逾期</b> ·
+          <b>${today.length} 项今天到期</b> ·
+  ```
+- 说明：页头（2446-2451）在一段 13px 文本里塞 5 组统计，「逾期」红色加粗、「今天到期」再加粗，行尾再嵌一个 btn-primary；顶栏 907 已有同款主按钮。同屏出现两个等强度红实心按钮，用户第一眼抓不到主操作。设置页复现同型问题：4543「保存」与 4572「修改密码」同屏两个 primary。
+
+### 🟠 high F902：列表任务行一行并列 8 个信息元素，标签/评论/关注人/日期同权重挤在一排，主信息（标题）被小徽章压制 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2637`
+- 证据：
+  ```
+  ${t.comments.length ? `<span title="${t.comments.length} 条评论" style="font-size:12px;color:var(--text-faint)">💬 ${t.comments.length}</span>` : ''}
+  ```
+- 说明：taskRowHTML(2629-2641) 一行同时渲染 check-circle（还带状态描边）、标题+子任务计数+重复图标、proj-chip、最多 2 个实色 tag-chip、开始日期、截止 due-badge（700 字重+彩色底）、💬、👥、头像；行高 padding 仅 9px(428)，13.5px 标题与一排 11px 彩色 pill 并排。且列表不显示优先级而看板显示(3421)，同一数据两套元素集，跨屏噪音叠加。多数徽章可收进 hover 或详情。
+
+### 🟠 high F903：看板卡片在「已按状态分列」的列里再放一个状态 pill（同屏说两遍），一卡叠 5 类徽章 + 边框套边框的盒中盒 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3420`
+- 证据：
+  ```
+  <span class="status-pill ${STATUS_CLS[t.status]||'s-todo'}">${STATUS_NAME[t.status]||'待办'}</span>
+  ```
+- 说明：列头(3325)本身就是「待办/进行中/已完成」，卡内又放 status-pill —— 纯冗余强调。一张 272px 卡（490：border+radius8+box-shadow，hover 再加深）foot 里同时有状态 pill、prio-pill、两个实色 tag、☑ 计数、10.5px 日期、头像，外加右上角 check-circle(3417)，全挤在 margin-top:9px 的 flex-wrap 里；容器 board-col(479) 又自带 border+radius，形成灰盒套白盒的双层边框。
+
+### 🟡 medium F604：同一语义「品牌红浅描边 / 浅底」出现五套近似 hex，全部绕过已有 --brand-light 令牌 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:98`
+- 证据：
+  ```
+  .home-stats .hs-over{color:var(--red)}
+  #home-qa{margin-left:10px}
+  .home-primary{margin-bottom:18px;border-color:#f0d9db}
+  ```
+- 说明：浅描边四个值：.home-primary #f0d9db(100)、.notif-item.unread #f5d5d9(613)、冲突弹窗按钮内联 #f0c2c7(1534)、回收站提示卡 #f3d9d9(4686)，:root 的 --brand-light #FDF0F1(13) 无一使用。浅红底同样分叉：#fdecec(77/456/346) 与 --prio-high-bg(42) 同值却写死两份，另有 #fde8e8(227)。跨页面浅红深浅不一。
+
+### 🟡 medium F605：「子任务 / 访客」灰绿小标签 #eef1ee/#5f6b62 在 5 处独立硬编码，无一入 :root ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:822`
+- 证据：
+  ```
+  .gantt-cell .g-type.sub{background:#eef1ee;color:#5f6b62}
+  ```
+- 说明：同一对值散落在 .tag-guest(229)、.g-type.sub(822)、日历格内联(3489)、甘特 popover .po-tag 内联(3507)、子任务详情 .tag 内联(4222)。v1.4 色板单源化没覆盖这批语义色，下次调色必然漏改。
+
+### 🟡 medium F606：标题字号整体绕过 --fs-* 六档并与 DESIGN.md 声明值直接冲突（页面 h1 实际 22px，基准文件写 19px） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:395`
+- 证据：
+  ```
+  .page-head h1{font-size:22px;font-weight:800;display:flex;align-items:center;gap:12px}
+  ```
+- 说明：DESIGN.md §3 声明 h1 = --fs-lg 19px、登录页品牌标题 = --fs-xl 24px；实际 .page-head h1 22px(395)、.auth-title 21px(272)、.modal-head h3 17px(259)、.stat-card .s-num 26px(627)、.ov-stat .n 22px(776)、抽屉标题 18px(535)——全部裸 px 不引用令牌。每页最显眼的字号都不在登记的档位内，基准文件已与实际实现脱节。
+
+### 🟡 medium F607：z-index 实际 16 档 vs DESIGN 声明七档「不得插队」：用户菜单 800 会被弹窗遮罩 900 盖住，批量条 700 压在抽屉之上 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:340`
+- 证据：
+  ```
+  #user-menu{
+    position:fixed;...z-index:800;display:none;padding:6px;
+  }
+  ```
+- 说明：全集：1200(112 骨架)、1000(239 toast)、950(683 popover)、900(249 modal)、800(340 用户菜单)、700(732 batch-bar)、640(143)、630(148)、610(524 抽屉)、600(520)、200(302 搜索下拉)、130(713 筛选面板)、50(289)、20(401)、2(496/808)、1(835)。同为浮层下拉两套值 800 vs 950；同类锚定下拉手 130 vs 200；batch-bar 700 高于抽屉 610 与侧栏 640，多选时打开详情抽屉即同屏叠压。DESIGN §6(187) 只登记 50→600→610→640→900→950→1000。
+
+### 🟡 medium F608：同一个类名两套规格：新建项目色卡 26px/圆角8 与编辑项目色卡 24px/圆角7，选中描边 #1f2430 裸值重复三处 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5048`
+- 证据：
+  ```
+  ${PROJ_COLORS.map((c,i)=>`<span class="np-c" data-c="${c}" style="width:26px;height:26px;border-radius:8px;background:${c};cursor:pointer;${i===0?'outline:2.5px solid #1f2430;outline-offset:2px;':''}"></span>`).join('')}
+  ```
+- 说明：同名 .np-c 在编辑项目弹窗是 24px/圆角 7(5275)；选中态描边以裸 hex 重复三处(5048/5261/5275)，而 :root 已有 --text #1f2430、焦点体系也已规定 outline:2px solid var(--brand)(59)。同类双规格还有输入框圆角 6px(86) / 8px(584) / 5px(675)、描边 1px(86) vs 1.5px(203/675/308)、头像 28/26/22/20px 四套(218/224/216/3772)。
+
+### 🟡 medium F904：顶栏常驻一个橙色警告胶囊紧贴红色主按钮，铃铛再挂红角标——52px 高的窄横条上四处彩色强调抢注意力 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:906`
+- 证据：
+  ```
+  <button class="store-status" id="store-status" onclick="retryStoreSvc()">⚠ 浏览器存储</button>
+  ```
+- 说明：store-status 默认态即橙色描边+⚠(311-313)，与 907 的红色 primary、913 的红角标(330) 同排竞争；顶栏还有 logo/搜索/用户共 7 个可点元素。警告胶囊长期驻留等于把「强调」变成「常态」，主按钮失去分量——状态应降级为无框文字或 hover 可见。
+
+### 🟡 medium F905：定义了六档字阶却几乎不用，实际散落 9px-26px 十余种字号，且 font-weight:700/800 规则约 55 处——「全部加粗＝没有重点」 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:46`
+- 证据：
+  ```
+  --fs-xs:11px; --fs-sm:12.5px; --fs-base:13.5px; --fs-md:15px; --fs-lg:19px; --fs-xl:24px;
+  ```
+- 说明：实际用到 26/22/21/20/18/17/14/13/12.5/11.5/10.5/10/9.5/9px（见 627/395/272/403/535/259/55/68/46 段/454/3424/821/331/451/770）。基准正文 13.5-14px 再叠 9-11px 密集小字，同屏层级靠临时数字堆出来；连 11px 的 due-badge、9px 的 cal-tag 都加粗到 700/800，粗体通胀后真正的重点无从凸显。
+
+### 🟡 medium F906：筛选在同一屏被表达四层：按钮 + 红底计数角标 + 可点摘要 pill 条 + 480px 弹层面板（内含已存视图列表） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2853`
+- 证据：
+  ```
+  return `<div class="filter-bar">
+      <button class="filter-btn ${n?'on''}" id="filter-toggle" title="筛选任务">
+  ```
+- 说明：filterBarHTML(2853-2885) 叠了 filter-btn(702 带边框) + fb-count 红底角标(707) + .f-sum 品牌红底 pill 条(709，每个可单独点掉) + filter-panel 里 5 组 f-chip(723，每个又 border+radius+底色三件套) 与「已存视图/＋保存」行。项目页头部本身已有 5 个视图 tab + 成员 + ＋成员 + ⋯ 菜单(2965-2994)，筛选条把 sticky 头部撑到三行高，同一条件三种形态重复出现。
+
+### 🟡 medium F907：改一个任务状态并存至少五种视觉语法（圆点 / 拖拽 / 抽屉 pill / 深色浮条 / 分组头加号），批量条再把每个动作用 emoji 装饰一遍 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3237`
+- 证据：
+  ```
+    bar.innerHTML = `<span class="cnt">${MULTI.ids.size} 项已选${hidden?`（含 ${hidden} 项被当前筛选隐藏，操作仍会生效）`:''}</span>
+      <button data-ba="done" title="把选中的任务标记为已完成">✓ 标记完成</button>`;
+  ```
+- 说明：入口分别为行内 check-circle(2630)、拖行到另一分组(3092-3120)、抽屉三按钮 pill(3787/1126)、批量条 ✓/↩(3238-3239)、分组头＋直接落到该组(3036)。深色悬浮条本身是第六种浮层形态（与 popover/modal/抽屉/下拉并列）。同一动作多种语法＝每种都要重新学一遍，也正是「使用便利」的反面。
+
+### 🟡 medium F908：抽屉头部固定铺 7 行元数据网格，「低优先级 / 不重复 / 未设置」等空默认值与有效信息同权重占屏 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3796`
+- 证据：
+  ```
+  <div class="dt-meta-label">开始日期</div>
+        <div class="dt-meta-value">
+          ${canWrite ? dateFieldHTML('dt-start', t.startDate)
+  ```
+- 说明：openDrawer(3784-3818) 无条件渲染状态/负责人/开始/截止/优先级/重复/关注人 7 行 dt-meta-grid，label 12.5px/700、值区 min-height 38px(542)，未设置也占整行；日期值还是带边框+圆角+内嵌 📅 的 date-field(546/997)。用户打开抽屉第一眼是表单矩阵而不是任务本身。
+
+### 🟡 medium F909：同一类次级文字反复用「又加粗又淡化」（700/800 + --text-faint）的矛盾配方，强调与弱化互相抵消 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:541`
+- 证据：
+  ```
+  .dt-meta-label{padding:9px 0;font-size:12.5px;font-weight:700;color:var(--text-faint);display:flex;align-items:center;gap:6px}
+  ```
+- 说明：同款配方在 dt-sec-title(563，12px/800+faint+uppercase+字距)、home-sub(101，11.5px/800+faint)、group-head(605，12px/800)、table th(619，11.5px/800+faint+uppercase)、side-label(370，11px/700+faint) 反复出现。中文里 text-transform 无效果却保留字距；12/12.5/11.5 差 0.5px 肉眼分不出层级，只能靠更粗，于是进一步推高加粗通胀（F905）。
+
+### 🟡 medium F910：收件箱每一行都挂品牌红实心方块 + 🔔 emoji，整列全是红导致未读强调被冲平；行内图标与 SVG 体系混排 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:2597`
+- 证据：
+  ```
+  <span class="avatar" style="background:var(--brand);width:26px;height:26px;font-size:11px">🔔</span>
+  ```
+- 说明：所有通知行统一 26px 品牌红底 🔔，未读另有 brand-light 粉底(613)——每行都有红，红块失去区分意义只剩噪音。同一应用里侧栏/顶栏用线性 SVG(2342 起)，行内却散落 💬👤👥📅✓↩🗑🌐🔔📭🎉⚠💾📦👁（2637/2363/2387/2958/3764），emoji 与 SVG 混排导致基线不齐且无法控色，是「不像成熟产品」的典型细节。
+
+### 🟡 medium F911：登录卡片下半部塞入虚线框「演示账户」块，内含三组带边框 monospace 凭据 chip，卡片内出现第四层盒子 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:878`
+- 证据：
+  ```
+  <div class="auth-demo">
+        <b>演示账户</b>（首次打开自动创建）<br>
+  ```
+- 说明：.auth-card 本身已有 border+radius14+shadow-lg(267)，底部再叠 dashed 边框块(275-278，border+radius+bg-sub+虚线四件套)，块内每个 .cred 又是白底+border+radius 的第三层小盒子(280)，12px/1.9 行高共 5 行。首屏唯一任务应是「输入→登录」，宣传语(273)+演示块+切换链接把重心从登录按钮拉走。
+
+### 🟡 medium F912：同类卡片内边距 11/12/14/16/18/20/22/24px 八种混用，分组主要靠 1px 分割线而不是留白节奏区隔 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:632`
+- 证据：
+  ```
+  .home-card{border:1px solid var(--border);border-radius:12px;padding:18px 20px;background:#fff}
+  ```
+- 说明：home-card 18px 20px(632)、stat-card 16px(626)、ov-stat 14px 16px(775)、board-card 11px 12px(490)、modal-body 16px 22px(260)、drawer-body 24px(531)——无间距刻度，首页 4 张 home-card 与 ov-stat 型块并排时边缘留白不齐。区隔又依赖线框：这几类卡片全带 1px border，.dt-sec(562)、.su-item(778)、.table td(622)、.task-row(429) 再各加横向分割线，「到处是线」让界面像表格拼盘而非留白分组的现代卡片流。
+
+### ⚪ low F609：色板外离牌色若干：#2563eb 成员标签、把「优先级-低」专用值挪用为归档色、第三四种滚动条与分隔线灰 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:644`
+- 证据：
+  ```
+  ::-webkit-scrollbar-thumb{background:#d4d7dd;border-radius:5px;border:2px solid transparent;background-clip:content-box}
+  ```
+- 说明：.tag-member 文字 #2563eb(228) 既非 --blue 也非 --prio-low-fg；归档横幅内联 color:#1d4ed8 + border #c7dbfa(2960) 挪用优先级专用值表达「归档」；滚动条灰 #d4d7dd/#b9bec7 与 --border-strong 并存；头像兜底 '#999'(2472/3835/4264)；行分隔线 #f0f1f3(429/470/622/665/778) 与 #f2f3f5(586) 与 --border 构成四种分隔线灰；只读横幅文字 #a05e00(650) 与 --st-doing-fg 两个橙字色并存。
+
+### ⚪ low F610：优先级色在 JS 侧留有第二来源，甘特条与图例走不同令牌路径——今天数值相同，任一侧调整即「图例与条形不同色」 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1140`
+- 证据：
+  ```
+  const PRIO_PILLS = [
+    { p:'high', name:'高', color:'#dc2626' },
+  ```
+- 说明：v1.4 已把 --prio-* 收进 :root(42-44)，PRIO_PILLS 仍以裸 hex 复制 --prio-*-bar 三个值(1141-1143，用于 1147/4243 内联背景)；甘特条形实际用 barColor{high:'var(--red)',...}(3561)，同一视图的图例却用 var(--prio-high/med/low-bar)(3576-3578)。对照状态色 STATUS_DEF(1026) 已单源，优先级未获同等待遇。另 AV_COLORS 含 #64748b(1206) 与 --st-todo-fg 同值、PROJ_COLORS(1207) 与品牌/蓝/成功/橙语义色撞色。
+
+### ⚪ low F611：档位外正文小字号裸值泛滥（13px×38、12px×24、11.5px×20），且 DESIGN §3 与 §4 自相矛盾 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:104`
+- 证据：
+  ```
+  .empty-hint{display:block;font-size:12px;color:var(--text-faint);margin-top:6px;font-weight:400}
+  ```
+- 说明：DESIGN §3 六档为 11/12.5/13.5/15/19/24，不含 11.5/12/13px 且只豁免 9-10.5px 历史遗留；.btn 13px(68)、.field label 13px(84)、.menu-item 13px(343)、.pref-hint 11.5px(105)、store-status 11.5px(312)、due-badge 11.5px(454) 等均越档。代码忠实实现了 §4 自登记的 .btn 13px，从而必然违反 §3/§7——基准文件本身需要先决出谁是对的。
+
+### ⚪ low F612：动效时长 8 档并存且三处 300ms 超出 DESIGN「全部 ≤250ms」上限，prefers-reduced-motion 只覆盖骨架 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:417`
+- 证据：
+  ```
+  .progress-bar .fill{height:100%;border-radius:3px;background:var(--green);transition:width .3s}
+  ```
+- 说明：时长全集 .1s/.12s/.15s/.18s/.2s/.22s/.25s/.3s 无令牌承载；.3s 出现在进度条(417) 与 toast 淡出(1178/1182)，直接越过 DESIGN §1(15) 声明的 250ms 上限。reduced-motion 降级只有骨架(122) 一处，toastIn/modalIn/抽屉滑动无降级（§8 也只承诺骨架，属基准文件覆盖不全）。
+
+## 操作反馈与流程闭环（flow-feedback）— 9 条
+
+### 🔴 blocker F701：账户表写入（注册 / 改密 / 停用）从不刷新顶栏保存态且写盘失败静默吞掉——用户以为成功，账户可能根本没落盘 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1801`
+- 证据：
+  ```
+  function saveAuth(){
+    if(!AUTH) return;
+    ...
+    if(SVC_MODE){ pushAuthStore(); }
+  }
+  ```
+- 说明：saveAuth 既不 await pushAuthStore，也从不调用 setSaveState/updateStoreStatus，所以「💾 已保存 HH:MM:SS」只反映个人库/共享库两条写路径（saveDB 1790-1797）。pushAuthStore 在 fetch 抛错或非 409 失败时于 1438-1439 直接 return false，无任何 toast；而 5595 立刻弹「注册成功，已自动登录」。若文件此刻写失败，下次 loadAccounts 从文件重读则该账户凭空消失且无任何失败提示——「以为成功了其实没成功」。Y1 回归用例只测了成功路径。
+
+### 🟠 high F702：批量操作后批量条仍显示旧「N 项已选」而实际选中集已清空，用户被卡在多选态且计数是假的 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3254`
+- 证据：
+  ```
+  MULTI.ids.clear();
+  ```
+- 说明：batchWithUndo(3125) 内部先 saveDB + renderApp（此时 MULTI.ids 仍是 N，renderListView 于 3069 重绘出「N 项已选」的批量条），返回后调用方才 MULTI.ids.clear()，之后既不清 MULTI.on 也不 removeBatchBar。于是批量条显示「2 项已选」而真实选中为 0，再点批量动作实际作用 0 项。与 pruneMultiSelection(3145)「空集即关条」的处理也不一致。
+
+### 🟠 high F703：复制项目对全部任务做同步深拷贝却无 loading、无撤销，比复制单个任务（有 6 秒撤销）的反馈更弱 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5209`
+- 证据：
+  ```
+  tasksOfProject(proj.id).forEach(t=>{
+      const ct = JSON.parse(JSON.stringify(t));
+  ```
+- 说明：duplicateProject 逐任务连同子任务深拷贝再 saveDB（内部整库 JSON.stringify），全部在 confirm 返回后同步执行，大项目会有明显 >200ms 卡顿却无「复制中…」或禁用态（触发按钮在自研弹窗之外，未经 openModal 的 in-flight 锁）；收尾(5224)只弹普通 toast「项目已复制」，而 duplicateTask(5194) 同类动作提供撤销——更重的操作反而不可撤销。
+
+### 🟡 medium F704：不可逆动作仍走原生 confirm()（12 处），与自研 openConfirm 弹窗体系风格割裂，且无撤销窗口 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:4799`
+- 证据：
+  ```
+  if(!confirm(`⚠️ 清空回收站？将永久删除 ${total} 项内容，此操作不可恢复！`)) return;
+  ```
+- 说明：清空回收站、导入覆盖全库(4720)、停用账户(4511)、批量删除(3281)、删除项目(5315) 用原生 confirm，而应用内已有 openConfirm(4913，注释明写「逐步替代原生 confirm，保持文案与视觉一致」)并用于共享/收回(5157)。同类破坏性动作分裂在两套确认 UI 之间：原生框阻塞、无主题、无后果分级，对唯一「不可恢复」的清空回收站尤其不够。
+
+### 🟡 medium F705：同一抽屉内字段编辑反馈不一致：改优先级/描述/重复弹 toast，改标题/负责人/日期完全静默 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3871`
+- 证据：
+  ```
+  if(v && v!==t.title){ t.title=v; t.activities.push({...}); saveDB(); renderApp(); }
+  ```
+- 说明：优先级(3909) toast、描述(3916) toast、重复(3913) toast，而标题 blur(3873)、负责人 change(3888-3896)、起止日期(3897/3903) 静默。尤其指派负责人会给对方发通知，操作者本人却零确认；用户难以判断这类编辑是否真的写进去了。
+
+### 🟡 medium F706：6 秒撤销 toast 无可见倒计时、按钮到点凭空消失，且 toast 容器不限条数会互相堆叠（上一轮 audit-47 残留） ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:1171`
+- 证据：
+  ```
+  if(action){
+      const a = document.createElement('button');
+      a.textContent = action.label || '撤销';
+  ```
+- 说明：含撤销的 toast 存续 action.timeout||6000(1178) 但没有进度条或剩余时间文本，用户不知道还剩多久；#toast-wrap(239) 是定位置底纵向 flex，无最大条数也无溢出裁剪——批量删除 + 子任务删除 + 评论删除连续动作会在同一位置叠多张 6 秒撤销卡并互相挤压，破坏「同屏只关心最新一次撤销」的预期。
+
+### 🟡 medium F707：「描述已保存 / 资料已保存」在异步防抖落盘之前就用完成时态，成功态过度承诺 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:3915`
+- 证据：
+  ```
+  if($('#dt-desc').value !== t.desc){ t.desc = $('#dt-desc').value; saveDB(); toast('描述已保存'); }
+  ```
+- 说明：SVC 模式下 saveDB 只是把推送排进 400ms 防抖(1790)，真正写文件在其后的异步 fetch；此处立即 toast「已保存」（同类 4591「资料已保存」）。用户看到「已保存」可能随即关页，而写盘仍在路上——与 F505 的静默写失败叠加时后果是真实的丢数据。
+
+### 🟡 medium F708：快速添加与子任务添加每次成功即关弹窗，无法连续录入，须反复重新呼出并重选项目 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:5107`
+- 证据：
+  ```
+  toast('任务已创建', 'ok');
+      return true;
+  ```
+- 说明：onOk 返回 true 触发 openModal 的 removeModal(4900) 直接关闭。快速添加（对标 Asana 批量录入场景）与 openAddSubtaskModal(5027 同样 return true) 都不清空输入并保留项目/状态上下文。核心录入动作的流程在「创建成功」这一步被截断。
+
+### ⚪ low F709：导入在确认后的备份 fetch + 解析 + 迁移 + 整库重绘阶段无任何进行中指示 ✅已复核
+
+- 位置：`FlowTask_本地项目管理平台.html:4715`
+- 证据：
+  ```
+  rd.onload = async ()=>{
+        try{
+          const data = JSON.parse(rd.result);
+  ```
+- 说明：confirm 阻塞返回后仍要串行跑备份 fetch(4723 await)、DB=data、saveDB、migrateData、renderApp；数 MB json 的解析与整库重绘可达数秒，期间按钮无禁用、无「导入中…」，用户面对无响应界面容易以为没生效而重复操作（重复触发还会连累 F503 的登出丢数据路径）。
+
+<!-- ROUND2-OPPORTUNITIES -->
+
+## 改版机会点（findings 聚类，8 个主题）
+
+> 每个机会点的严重度分布由 findings 现算；聚类覆盖 91 / 91 条 finding。
+
+### 🥇 高优先级 O1：让「数据跟随账户」这句话真正成立：权限边界与账户隔离闭环
+
+- 覆盖 findings：12 条（🔴 blocker 5 / 🟠 high 4 / 🟡 medium 2 / ⚪ low 1）
+- id 清单：F801、F802、F803、F805、F806、F807、F808、F809、F810、F811、F812、F501
+- 影响范围：登录 / 成员管理 / 项目设置 / 共享与收回 / 回收站 / 服务端鉴权
+- 为什么值得做：12 条里 5 条 blocker：会话可由客户端自报 uid 换取、账户表与旧库只需页面令牌即可读写、管理员可把别人的共享项目收回成自己的、任何成员可增删项目成员并改名、只读访客也能清空全团队回收站。用户明确提过「数据和账户要合理」，而这组缺陷的方向是反的——隔离形同虚设，且彼此之间可组成可用攻击链（任何成员改共享项目名 → 管理员打开共享确认框即在其会话里执行脚本）。
+
+### 🥇 高优先级 O2：把「已保存」变成真的已保存：写盘可信性与并发正确性
+
+- 覆盖 findings：14 条（🔴 blocker 5 / 🟠 high 4 / 🟡 medium 4 / ⚪ low 1）
+- id 清单：F502、F503、F504、F505、F506、F507、F508、F509、F511、F512、F210、F701、F707、F709
+- 影响范围：顶栏保存状态 / 账户表 / 个人库与共享库落盘 / 备份目录 / Node 与 PowerShell 两份服务
+- 为什么值得做：14 条里 5 条 blocker，全部指向同一个用户可感结论：界面说存上了其实没存上，或存上了却把别人的、自己别处的覆盖掉。最危险的是写盘失败被吞掉仍回 200 且 hash 已推进导致此后永不重试真写（F505），以及一次瞬时读失败 + 一次注册即覆盖整份账户表并自动变管理员（F504）。F511/F512 还会让备份被误删、两份服务端实现行为分裂；F701/F707 则说明「已保存」这个措辞本身就在替一个还没发生的异步写背书。
+
+### 🥇 高优先级 O3：边界数据与错误态：不再白屏、不再「数据凭空消失」
+
+- 覆盖 findings：7 条（🔴 blocker 1 / 🟠 high 2 / 🟡 medium 2 / ⚪ low 2）
+- id 清单：F201、F203、F204、F206、F207、F211、F709
+- 影响范围：启动加载 / 数据管理导入 / 服务异常 / 登录页首启
+- 为什么值得做：导入一条结构不完整的备份即可让全站白屏且坏数据已先落盘（渲染无 try/catch + 先落盘后渲染）；读取报错被当成「文件不存在」而展示空库甚至注入演示内容；离线首启按登录页宣传去登演示账户必然失败。共同特征是「错误态被误分类成空态」，用户唯一能想到的解释就是数据丢了。
+
+### 🥇 高优先级 O6：键盘 / 读屏 / 触屏可达性补全（承诺与实现的差距）
+
+- 覆盖 findings：15 条（🔴 blocker 1 / 🟠 high 6 / 🟡 medium 7 / ⚪ low 1）
+- id 清单：F401、F402、F403、F404、F405、F406、F407、F408、F409、F410、F411、F412、F103、F104、F107
+- 影响范围：顶栏用户菜单 / 抽屉 / 表单 / 拖拽排序 / 浮层 / 小字配色 / 甘特窄屏
+- 为什么值得做：15 条里 1 条 blocker：退出登录 / 切换账户只有鼠标可达（探针实测 #user-chip 无 tabindex，菜单未渲染时不可聚焦）。另两处是「README 已承诺但实现没做到」：aria-live 全文 0 命中而保存状态被视为可感知反馈；抽屉焦点管理缺失且 enhanceA11y 调用时机在重绘之前（探针实测抽屉控件 tabindex 全为 null）。三处拖拽无任何键盘或触屏等价路径。
+
+### 🥇 高优先级 O7：统一交互语法与操作反馈（便利专项）
+
+- 覆盖 findings：10 条（🔴 blocker 0 / 🟠 high 4 / 🟡 medium 5 / ⚪ low 1）
+- id 清单：F101、F102、F105、F106、F702、F703、F704、F705、F706、F708
+- 影响范围：多选与批量条 / 快速添加 / 抽屉字段编辑 / 破坏性动作确认 / 撤销 toast
+- 为什么值得做：10 条：改一个任务状态并存五种视觉语法；批量操作后批量条继续显示「2 项已选」而实际选中为 0（探针实测）；多选批量条跨页面悬浮且删除按钮仍可点（探针实测）；复制项目比复制单任务反馈更弱（无 loading 无撤销）；原生 confirm 与自研确认框并存。这些都是「用了才知道别扭」的摩擦，也正是用户上一轮逐条报问题的同类。
+
+### 🥈 中优先级 O4：界面降噪与视觉层级重构（简洁大方专项）
+
+- 覆盖 findings：15 条（🔴 blocker 0 / 🟠 high 6 / 🟡 medium 9 / ⚪ low 0）
+- id 清单：F901、F902、F903、F904、F905、F906、F907、F908、F909、F910、F911、F912、F601、F602、F603
+- 影响范围：首页 / 顶栏 / 列表行 / 看板卡 / 抽屉头部 / 筛选条 / 收件箱 / 登录卡片
+- 为什么值得做：15 条里 3 条 high，全部是「同屏强调互相抵消」：首页两个一模一样的红色主按钮（探针实测 count=2）、看板卡在已按状态分列的列里再放状态 pill（探针实测 pill=待办 / 列头=待办）、任务行一行 8 个并列元素、六档字阶实际用了十余种且约 55 处 700/800 加粗。信息量不是问题，等强度才是问题——大多是删元素/降权重而非新增设计，性价比高。
+
+### 🥈 中优先级 O5：设计令牌与 DESIGN.md 基准对齐（先决出谁是对的）
+
+- 覆盖 findings：9 条（🔴 blocker 0 / 🟠 high 0 / 🟡 medium 5 / ⚪ low 4）
+- id 清单：F604、F605、F606、F607、F608、F609、F610、F611、F612
+- 影响范围：DESIGN.md / :root 令牌 / 浮层层级 / 优先级色板第二来源
+- 为什么值得做：9 条：基准文件声明 h1=19px 而实现 22px、声明圆角四档而实现 11 种、声明 z-index 七档「不得插队」而实现 16 档（并因此出现用户菜单 800 被弹窗遮罩 900 盖住、批量条 700 压在抽屉之上的真实层叠冲突）。基准与代码互相矛盾时改一处必漏另一处——先让 DESIGN.md 可信，否则下轮走查还会重演。
+
+### 🥈 中优先级 O8：全站术语与文案一致性（把自家术语表执行到底）
+
+- 覆盖 findings：10 条（🔴 blocker 0 / 🟠 high 4 / 🟡 medium 5 / ⚪ low 1）
+- id 清单：F301、F302、F303、F304、F305、F306、F307、F308、F309、F310
+- 影响范围：看板空态 / 项目概览 / 共享与收回确认 / 偏好设置 / 回收站 / 错误提示
+- 为什么值得做：10 条里 4 条 high，其中 3 条是 README 术语表白纸黑字禁用的词仍在界面上（看板「卡片」、概览把项目创建人标成「负责人」、确认弹窗抛出 flowtask_shared.json）。术语表本身就是上一轮为治理这个问题而立的，说明不是没意识到，而是缺一道把术语表变成可执行检查的手段——建议在测试里加禁词断言，让它不再回潮。
+
+## Top 待办（按 severity × 覆盖面轮转取前 10 条）
+
+| # | finding | 严重度 | 维度 | 问题 |
+|---|---|---|---|---|
+| 1 | F201 | blocker | state-edge | 导入校验太浅：脏备份先落盘再渲染，renderApp 无 try/catch → 全站白屏且刷新后无法恢复 |
+| 2 | F401 | blocker | a11y | 账户菜单与退出登录只有鼠标可达：#user-chip 不在键盘增强白名单里，键盘用户永久无法登出或切换账户 |
+| 3 | F501 | blocker | data-safety | 回收站整页无权限门槛：任何登录用户可「清空回收站」，连带物理删除共享库里他人的删除项 |
+| 4 | F701 | blocker | flow-feedback | 账户表写入（注册 / 改密 / 停用）从不刷新顶栏保存态且写盘失败静默吞掉——用户以为成功，账户可能根本没落盘 |
+| 5 | F502 | blocker | data-safety | splitStores 用「项目是否还在 DB.projects」判归属：项目一进回收站，其共享任务就被搬进删除者的个人库并从共享库消失 |
+| 6 | F101 | high | interaction-binding | 多选批量条挂在 body 上，离开项目页后仍悬浮在所有页面且按钮可触发（含「删除」） |
+| 7 | F203 | high | state-edge | 服务端把「读文件报错」与「文件不存在」一律回 204，客户端据此当空库并触发认领/演示注入 |
+| 8 | F301 | high | copy | 看板视图把工作项称作「卡片」，直接违反自家术语表（同一句里还和「任务」并列指同一对象） |
+| 9 | F402 | high | a11y | 全站 aria-live / role=status / role=alert 命中数为 0：toast、保存状态、冲突告警对读屏完全静默 |
+| 10 | F506 | high | data-safety | Node 端并发 POST：rev 校验与实际推进隔着异步备份与写盘队列，两个写请求都拿 200，后写者静默整片覆盖 |
+
+## 下一步建议
+
+- **先做 O1 + O2**：这两组共 25 条、含 10 个 blocker，全部落在「账户隔离」与「数据不丢」两条底线上；它们也是本轮唯一会静默丢数据 / 串到别人账户的部分，建议在任何视觉改动之前先修。
+- **O3 与 O7 可并入同一轮**：错误态与反馈闭环的修法高度重叠（错误要被分类为错误、动作要有可感反馈）。
+- **O4 / O5 / O8 属于一次成型的收敛工作**：删冗余强调 + 令牌回表 + 术语表禁词断言，做完应把三者都固化成自动检查，否则第三轮还会出现同类残留（本轮 F601/F603/F706 就是上一轮 audit-43/24/47 的残留）。
+- **完整 WCAG 2.1 AA 请另开 /无障碍检查**；本报告的 a11y 维度只是启发式缺口清单，不能当合规结论用。

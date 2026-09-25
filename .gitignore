@@ -1,0 +1,46 @@
+# ---- 运行时数据（不入库，随用随生成） ----
+flowtask_data.json
+# 本机部署配置（含共享盘路径等机器相关信息）：只入库 .example，实际文件随机器走
+flowtask_config.json
+# 同步记账（本机视角的最近推/拉状态，随机器走，不入库）
+flowtask_sync.json
+# 三路合并的「共同祖先」基线快照：只存本机，绝不上共享盘
+*.base.json
+.flowtask-write-probe
+flowtask_data.json.tmp
+flowtask_data_conflict_*.json
+flowtask_data_corrupt_*.json
+backups/
+
+# ---- 测试临时产物 ----
+tests/tmp/
+
+# ---- 系统/桌面杂项 ----
+desktop.ini
+*.lnk
+Thumbs.db
+
+# ---- v1.5 多文件运行时数据（含账户表与口令哈希，绝不入库） ----
+flowtask_auth.json
+flowtask_auth.json.tmp
+flowtask_shared.json
+flowtask_shared.json.tmp
+flowtask_secret.json
+flowtask_data_*.json
+
+# ---- E2E 截图（每次运行重新生成） ----
+e2e-shots/
+
+# ---- 运行/调试日志 ----
+*.log
+
+# ---- 桌面版（Tauri）构建产物与工具链缓存 ----
+desktop/node_modules/
+desktop/sea/
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/*.exe
+desktop/src-tauri/gen/
+desktop/dist/
+
+# 内部部署记录（含真实内网信息，仅私有分支保留，绝不公开）
+局域网多用户升级方案.md

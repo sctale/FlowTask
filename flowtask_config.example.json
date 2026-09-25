@@ -1,0 +1,8 @@
+{
+  "_说明": "把本文件改名成 flowtask_config.json 即开启共享盘同步；删掉或改名为其它名字就是纯本机模式。改完需要重启 FlowTask（关掉再双击快捷方式）。",
+  "_优先级": "命令行参数 / 环境变量 FLOWTASK_SHARE_DIR > 本文件的 shareDir > 默认关闭",
+  "_路径要求": "必须是已经存在且你有写权限的目录（资源管理器里能打开、能新建文件）。程序不会替你创建这个目录——路径打错时静默建目录会让数据落进一个谁都不知道的地方，界面却显示已同步。",
+  "_syncEnabled": "填 false 可以临时停用同步而保留路径，便于排查问题。",
+  "shareDir": "\\\\fileserver\\share\\FlowTask",
+  "syncEnabled": true
+}

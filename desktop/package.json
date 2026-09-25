@@ -1,0 +1,16 @@
+{
+  "name": "flowtask-desktop",
+  "private": true,
+  "version": "2.1.1",
+  "description": "FlowTask 桌面版（Tauri 壳 + Node SEA sidecar 服务端）。构建产物与工具链依赖，运行时零依赖。",
+  "scripts": {
+    "sidecar": "node scripts/build-sidecar.cjs",
+    "tauri": "tauri",
+    "build": "node scripts/build-sidecar.cjs && tauri build --config src-tauri/tauri.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "esbuild": "^0.24",
+    "postject": "^1.0.0-alpha.6"
+  }
+}
