@@ -1,7 +1,7 @@
 {
   "name": "flowtask-desktop",
   "private": true,
-  "version": "2.1.1",
+  "version": "2.1.3",
   "description": "FlowTask 桌面版（Tauri 壳 + Node SEA sidecar 服务端）。构建产物与工具链依赖，运行时零依赖。",
   "scripts": {
     "sidecar": "node scripts/build-sidecar.cjs",

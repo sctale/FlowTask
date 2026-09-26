@@ -2,7 +2,7 @@
 
 单文件、零依赖、本地优先的团队任务管理工具。整个前端是一个 HTML 文件，数据落在本机的 JSON 文件里，配合 Windows 自带的 PowerShell（或 Node.js）存储服务运行，拷走整个文件夹即可换机使用。
 
-当前版本 **v2.1.2**（变更记录见 [CHANGELOG.md](CHANGELOG.md)，设计规范见 [DESIGN.md](DESIGN.md)）。
+当前版本 **v2.1.3**（变更记录见 [CHANGELOG.md](CHANGELOG.md)，设计规范见 [DESIGN.md](DESIGN.md)）。
 
 ## 两种用法
 
@@ -348,10 +348,21 @@ node smoke_share.js "\\\\文件服务器\\共享\\FlowTask"      # 或先设 FLO
 
 ## 测试
 
+**改完代码先跑这一条就够了**（验证链单一入口，任一项失败即非零退出码，可直接当 pre-push hook 用）：
+
+```
+node tests/run_all.js              # 全链：语法 → PS1 编码 → 版本一致性 → 单测 → 对等 → E2E（约 3-5 分钟）
+node tests/run_all.js --fast       # 跳过 E2E（约 1 分钟）
+node tests/run_all.js --no-ps1     # 跳过所有 PowerShell 相关项（无 PowerShell 的环境）
+```
+
+分项命令（需要单独定位问题时用）：
+
 ```
 node tests/syntax_check.js         # 语法闸门：内联脚本编译期校验 + 顶层重复声明 + 全部服务端与同步脚本（12 项）
-node tests/flowtask_test.js        # 单测 + UX 回归与守卫 + Node 服务端集成（331 条；末尾另有 1 条条数一致性守卫，故实跑显示 332）
-node tests/flowtask_test.js ps1    # PowerShell 服务端冒烟测试（11 条）
+node tests/version_check.js        # 版本一致性：9 处真相源 + 两个 lock（默认 lock 只提示，去掉 --allow-lock-drift 变严格）
+node tests/flowtask_test.js        # 单测 + UX 回归与守卫 + Node 服务端集成（336 条；末尾另有 1 条条数一致性守卫，故实跑显示 337）
+node tests/flowtask_test.js ps1    # PowerShell 服务端冒烟测试（15 条）
 node tests/server_parity.js        # 双服务端对等：同一套场景分别跑 Node 与 PowerShell（83×2 条）
 node tests/server_parity.js ps1     # 只跑 PowerShell 实现
 FT_PARITY_BASE=http://127.0.0.1:5178 node tests/server_parity.js external   # 打已在运行的实例
@@ -361,14 +372,18 @@ node tests/sync_parity.js          # 共享盘同步双端对等：同一套场�
 node tests/merge_test.js           # 三路合并内核单测：各改各的 / 字段级合并 / 对称性 / 删除与冲突（33 条）
 node tests/sync_merge_e2e.js       # 两台机器对撞：实体级合并端到端（18 条；加 ps1 跑 PowerShell 版）
 node tests/sync_parity.js ps1      # 只跑 PowerShell 实现
-node tests/qa_fix_regression.js    # QA 独立回归：服务端静默失败类缺陷（92 条）
-powershell -File tests/_ps1_parse_check.ps1   # PowerShell 语法解析 + 含中文脚本必须带 UTF-8 BOM
+node tests/qa_fix_regression.js    # QA 独立回归：服务端静默失败类缺陷 + 前端取值域（101 条）
+powershell -File tests/_ps1_parse_check.ps1   # PS1 语法解析 + 编码闸门（缺 BOM / 重复 BOM / UTF-16 三条独立判据）
 node tests/flowtask_e2e.js         # 真浏览器 E2E（Edge headless + CDP，57 条）
 FLOWTASK_SHOTS_DIR=docs/screenshots node tests/flowtask_e2e.js --shots   # 重拍 README 产品图（演示数据，改 UI 后跑）
 node tests/flowtask_e2e.js --selftest   # 只体检环境（Edge 是否存在、端口、服务能否起）
 node tests/flowtask_e2e.js --grep "E2E-2,M22"   # 只跑名字命中的场景（调试定位用，逗号分隔；门禁跑全量）
 node tests/flowtask_e2e.js --headed --dump-console   # 有头调试 + 打印页内 console
 ```
+
+> **写源码守卫请用 `tests/_helpers.js` 的 `readSource()`**，不要直接 `fs.readFileSync(..., 'utf8')`。
+> 行尾取决于各机的 `core.autocrlf` 与 `.gitattributes`，按字面 `\n` 匹配会「在这台机器绿、
+> 在那台机器红」——本仓库真实踩过。`readSource()` 把 BOM 与行尾归一，守卫从此与 checkout 无关。
 
 E2E 用 `FLOWTASK_DATA_DIR` 把数据/备份/冲突副本重定向到临时目录，
 运行前后会校验真实 `flowtask_data.json` 的 size/mtime 未被改动；

@@ -2,6 +2,58 @@
 
 格式参考 Keep a Changelog。提交可用 `git show <hash>` 查看细节。
 
+## [2.1.3] — 2026-09-25 · 全项目复审：修掉 PowerShell 服务不可运行、两处安全/数据缺陷，并把验证链补成单一入口
+
+### 现象与根因（本轮复审实测）
+
+一次针对代码（而非体验）的完整复审，发现的不是"写得差"，而是**自动化护栏的假阳性**——
+守卫把"看起来对"当成了"确实对"，于是两个真缺陷与两个真漏洞全都从绿色验证链里走了过去。
+
+### 修复
+
+- **PowerShell 服务完全无法启动（最高优先级）**：`flowtask_server.ps1` 等三个脚本的首部
+  被写成了**重复 BOM**（`EF BB BF EF BB BF`，实测为三份 BOM），导致 `param(...)` 不再是脚本的
+  第一条语句，PS 5.1 与 PS 7 都在 L35-37 报「赋值表达式无效」。
+  影响面：`启动存储服务.bat` 直接失败、`启动 FlowTask.vbs` 白等 7.5 秒才回落 Node、
+  `server_parity` / `qa_fix_regression` 的 PS1 用例全红；**无 Node 的机器上网页版完全不可用**。
+  而旧的编码守卫只判"前三字节是不是 `EF BB BF`"——重复 BOM 的前三字节**恰好也是**，
+  所以它一直显示 PASS。现已修复三个文件，并把守卫改成三条独立判据
+  （缺 BOM / 重复 BOM / UTF-16），逐条都能判红。
+- **跨账户存储型 XSS**：项目「详情」页的「项目创建人」把 `user.name` 原样插进 HTML，
+  而显示名从前端到服务端**不做任何校验**（username 有正则，name 只有 trim），
+  任意成员改个名即可对同事触发（CSP 因 `script-src 'unsafe-inline'` 帮不上忙）。
+  已补 `esc()`，并新增 `safeName()` 在**三个入口**（注册 / 管理员建号 / 个人设置）统一收口，
+  压掉 `< > \`` 与控制字符、限长 40——让"以后再忘了 esc()"不再是安全漏洞。
+- **「已暂停」导致备份无法导回**：`STATUS_DEF` 有四个状态，但 `['todo','doing','done']`
+  这个漏掉 paused 的三值字面量被重复写了 4 遍，其中一处正是**导入闸门**
+  （仓库自己的 `flowtask_shared.json` 里就有 paused 任务，所以"导出→导入"必然失败）；
+  同一字面量还让「已暂停」列里的"添加任务"建出「待办」。四处全部改为从 `STATUS_ORDER` 派生。
+- **验证链红绿取决于环境**：仓库没有 `.gitattributes`，行尾由各机 `core.autocrlf` 决定，
+  于是按字面 `\n` 匹配的源码守卫在 CRLF 的 checkout 上假红（实测 1 条）。
+  已新增 `.gitattributes` 钉死行尾（文本 LF、`bat/cmd/vbs/ps1` CRLF、二进制显式声明），
+  并新增 `tests/_helpers.js` 的 `readSource()` 统一归一 BOM 与行尾，相关守卫全部改走它。
+- **内网部署方案此前被 master 跟踪**：`局域网多用户升级方案.md` 含内网 IP、UNC 共享路径与
+  域账号实测记录，而 master 没有设 upstream——一次 `git push origin master` 就会带出去。
+  已 `git rm --cached` 并加入 `.gitignore`（本地文件保留）。
+- **出包脚本加固**：`build_release.ps1` 的 sidecar 构建**没判 node 退出码**
+  （失败会拿上一轮的陈旧 exe 去签名出包），`-SkipSidecar` 也**没有新鲜度校验**；
+  另外新增硬闸门——`dist/` 里出现 `flowtask_auth.json` / `flowtask_secret.json` 等运行时数据
+  即中止出包（在 exe 旁边跑一次就会生成，含真实口令哈希与签名密钥）。
+
+### 新增护栏（这次复审真正的产出）
+
+- `tests/version_check.js`：版本号在仓库里有 **9 处**真相源，此前只有 1 处（HTML↔CHANGELOG）有守卫
+  ——v2.1.2 就是在这种状态下发布的（出包时 7 处里有 2 处还写着 2.1.1）。
+  现在 9 处 + 两个 lock 全部受检，lock 默认提示、出包前可切严格模式。
+- `tests/run_all.js`：验证链**单一入口**。此前它是 README 里的一串命令，靠人记得逐条跑，
+  后果真实存在——`_ps1_parse_check.ps1` 不在验证链里，于是没人跑它，
+  而它恰好是当时唯一能发现"PS1 无法解析"的检查。
+- `flowtask_test.js` 增 5 条源码守卫：状态单源、导入闸门派生、`safeName` 收口、
+  项目创建人已转义，防回潮。
+
+### 版本
+- 三端 + tauri.conf + desktop/package.json + Cargo.toml 同步 2.1.3；两个 lock 一并对齐。
+
 ## [2.1.2] — 2026-09-25 · 修掉顶栏那个「没人配同步却露出来的空按钮」
 
 ### 现象与根因

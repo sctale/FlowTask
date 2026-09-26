@@ -26,6 +26,8 @@ const HTML = path.join(ROOT, 'FlowTask_本地项目管理平台.html');
 const SERVER_JS = path.join(ROOT, 'flowtask_server.js');
 const SERVER_PS1 = path.join(ROOT, 'flowtask_server.ps1');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* 源码守卫走 readSource()：行尾/BOM 归一，避免"红绿取决于 checkout 行尾" */
+const { readSource } = require('./_helpers');
 
 let passed = 0, failed = 0;
 const FAILED = [];
@@ -72,16 +74,34 @@ const tsTagFor = d => {
 /* ========================= PART A：前端纯函数（P0-3 / 导入校验） ========================= */
 function unitTests() {
   console.log('\n== A. 前端：validateImportData 取值域 与 escAttr/safeColor/safeMood 边界 ==');
-  const html = fs.readFileSync(HTML, 'utf8');
+  const html = readSource(HTML);
   const regions = [...html.matchAll(/\/\*==TEST-BEGIN==\*\/([\s\S]*?)\/\*==TEST-END==\*\//g)].map(m => m[1]);
   ok('A0 可从 HTML 标记区提取纯函数（>=5 处）', regions.length >= 5, '实际 ' + regions.length);
   const sandbox = { Date, Math, String, Number, Object, Array, JSON, RegExp, isNaN, console, Map, Set, Error };
+  /* validateImportData 的状态取值域现在是 STATUS_ORDER（单源，含 paused）。
+     真实运行时它由 STATUS_DEF 派生；沙箱里补上等价定义，才能验"paused 不再被拒"。 */
+  sandbox.STATUS_ORDER = ['todo', 'doing', 'paused', 'done'];
   vm.createContext(sandbox);
   vm.runInContext(regions.join('\n'), sandbox);
   const S = sandbox;
-  ok('A0b validateImportData / escAttr / safeColor / safeMood 均已导出到测试沙箱',
+  ok('A0b validateImportData / escAttr / safeColor / safeMood / safeName 均已导出到测试沙箱',
     typeof S.validateImportData === 'function' && typeof S.escAttr === 'function'
-    && typeof S.safeColor === 'function' && typeof S.safeMood === 'function');
+    && typeof S.safeColor === 'function' && typeof S.safeMood === 'function'
+    && typeof S.safeName === 'function');
+
+  /* --- A0c safeName：显示名收口（v2.1.3 新增，堵跨账户存储型 XSS） --- */
+  ok('A0c safeName 压掉标签与属性溢出字符', S.safeName('<img src=x onerror=alert(1)>') === 'img src=x onerror=alert(1)');
+  ok('A0d safeName 压掉反引号（属性位逃逸）', S.safeName('a`b') === 'ab');
+  /* 控制字符先被删除（含 \n），所以换行不会变成空格；真正的空格串才折叠。
+     这个顺序是有意的：显示名里的换行只会撑破表格与药丸，没有保留价值。 */
+  ok('A0e safeName 删控制字符、折叠空白并 trim',
+    S.safeName('  张\u0000三\n李四 ') === '张三李四'
+    && S.safeName('张  三') === '张 三');
+  ok('A0f safeName 限长 40', S.safeName('x'.repeat(100)).length === 40);
+  ok('A0g safeName 保留正常中英文与 emoji 名（不过度清洗）',
+    S.safeName('张三 Zhang 🚀') === '张三 Zhang 🚀');
+  ok('A0h safeName 对 null/undefined 返回空串（register 会回退到 username）',
+    S.safeName(null) === '' && S.safeName(undefined) === '');
 
   const base = () => ({
     users: [{ id: 'u1', username: 't', name: 'T', role: 'admin', color: '#E24D5C', active: true }],
@@ -116,6 +136,22 @@ function unitTests() {
   ok('A2e 非法 mood 被拒', typeof V(badMood) === 'string', String(V(badMood)));
   const badMoodInject = base(); badMoodInject.projects[0].statusUpdates = [{ id: 'su1', mood: 'ontrack" onclick="alert(1)', text: 'x' }];
   ok('A2f mood 注入载荷被拒', typeof V(badMoodInject) === 'string', String(V(badMoodInject)));
+
+  /* --- A2g 「已暂停」必须能导回（v2.1.3 修的真实缺陷）---
+     此前 STATUS_OK 写死 ['todo','doing','done']，而 STATUS_DEF 有四态，
+     于是"导出 → 导入"对自己导出的备份必然失败（仓库自己的 flowtask_shared.json
+     里就有 paused 任务）。这条断言锁住回归。 */
+  const paused = base();
+  paused.tasks = [
+    { id: 't1', title: '暂停的任务', status: 'paused' },
+    { id: 't2', title: '正常待办', status: 'todo' },
+  ];
+  ok('A2g 含「已暂停」任务的备份可导入（此前必然失败）', V(paused) === null, String(V(paused)));
+  const fourStates = base();
+  fourStates.tasks = ['todo', 'doing', 'paused', 'done'].map((s, i) => ({ id: 't' + i, title: s, status: s }));
+  ok('A2h 四种状态全部被接受', V(fourStates) === null, String(V(fourStates)));
+  const bogusState = base(); bogusState.tasks = [{ id: 't1', title: 'x', status: 'archived' }];
+  ok('A2i 未知状态仍被拒（加严没被放宽）', typeof V(bogusState) === 'string', String(V(bogusState)));
 
   /* --- A3 既有 7 条判定（含结构）不得被改动 --- */
   ok('A3 非对象被拒', typeof V(null) === 'string' && typeof V('x') === 'string');
@@ -212,7 +248,7 @@ function unitTests() {
   /* --- A11 P1-6 写盘与指纹同源（Node 源码）
          v1.10 起三条专用端点（改密/重置/删号）统一走 writeAuthObjWithRev，
          所以"同源"这条不变式要在该函数里查，而不是在 /api/changepw 的代码段里查。 --- */
-  const srv = fs.readFileSync(SERVER_JS, 'utf8');
+  const srv = readSource(SERVER_JS);
   const waStart = srv.indexOf('function writeAuthObjWithRev');
   const wa = waStart > -1 ? srv.slice(waStart, waStart + 1600) : '';
   /* v1.10：账户表落盘升级为 tmp+rename 原子替换（审查项 #3）——

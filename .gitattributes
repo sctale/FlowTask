@@ -1,0 +1,34 @@
+# 行尾与文本属性策略（v2.1.3 起）
+# ---------------------------------------------------------------------------
+# 背景：本仓库此前没有 .gitattributes，行尾完全由各台机器的 core.autocrlf 决定。
+# 结果是同一个工作树里 flowtask_server.js 是 CRLF、flowtask_sync.js 是 LF，
+# 而按字面 \n 匹配源码的守卫在 CRLF 的 checkout 上会假红——
+# 「测试红绿取决于环境而不是代码」。这里把行尾钉死，让 checkout 与平台无关。
+#
+# 统一 LF：与仓库里已存的 blob 一致（git ls-files --eol 显示 i/lf），
+# 因此不会产生全仓重写的噪声 diff。
+* text=auto eol=lf
+
+# Windows 脚本：cmd.exe 与 wscript 对 CRLF 最友好，单独钉成 CRLF。
+# （注释里刻意不写通配符示例之外的路径，新增批处理请沿用这两条规则。）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制：不得做行尾或编码转换，diff 也不应尝试按文本处理。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.exe binary
+*.dll binary
+*.zip binary
+*.pfx binary
+*.blob binary
+
+# 生成物 / 文档：标记为生成，参与 diff 折叠。
+desktop/package-lock.json linguist-generated=true
+desktop/src-tauri/Cargo.lock linguist-generated=true

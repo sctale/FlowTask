@@ -24,6 +24,9 @@ const ROOT = path.join(__dirname, '..');
 const HTML = path.join(ROOT, 'FlowTask_本地项目管理平台.html');
 const NODE_EXE = process.execPath;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* 源码守卫一律走 readSource()：行尾/BOM 归一，否则"红绿取决于机器上的
+   core.autocrlf"（本仓库真实踩过：CRLF checkout 让一条守卫假红）。 */
+const { readSource } = require('./_helpers');
 
 let passed = 0, failed = 0;
 function ok(name, cond, extra){
@@ -86,7 +89,7 @@ const sample = (rev, extra) => JSON.stringify(Object.assign({
 /* ================= 单元测试 ================= */
 function unitTests(){
   console.log('\n== 单元测试（从 HTML 提取标记区求值） ==');
-  const html = fs.readFileSync(HTML, 'utf8');
+  const html = readSource(HTML);
   const regions = [...html.matchAll(/\/\*==TEST-BEGIN==\*\/([\s\S]*?)\/\*==TEST-END==\*\//g)].map(m => m[1]);
   ok('找到测试标记区 >= 5 处', regions.length >= 5, '实际 ' + regions.length);
   const sandbox = { Date, Math, String, Number, Object, Array, JSON, RegExp, isNaN, console, Map, Set, Error };
@@ -332,7 +335,7 @@ function unitTests(){
   /* 守卫：$() 返回单个元素、$() 才返回列表 —— 源码里出现 `$(...).forEach(` 必然是 bug，
      且它在 render 链里抛错会让整页兜底成空白，肉眼只看到「页面打不开」。 */
   {
-    const src = fs.readFileSync(HTML, 'utf8');
+    const src = readSource(HTML);
     const bad = [];
     src.split(/\r?\n/).forEach((line, i) => {
       const m = line.match(/(^|[^$])\$\(('[^']*'|"[^"]*")(\s*,\s*[^)]+)?\)\.forEach/);
@@ -398,7 +401,7 @@ function unitTests(){
 /* ================= UX 阶段新增纯函数 + 防回退守卫 ================= */
 function uxTests(){
   console.log('\n== UX 优化回归（阶段 A-G 纯函数与守卫） ==');
-  const html = fs.readFileSync(HTML, 'utf8');
+  const html = readSource(HTML);
   const regions = [...html.matchAll(/\/\*==TEST-BEGIN==\*\/([\s\S]*?)\/\*==TEST-END==\*\//g)].map(m => m[1]);
   const sandbox = { Date, Math, String, Number, Object, Array, JSON, RegExp, isNaN, console, Map, Set, Error };
   vm.createContext(sandbox);
@@ -668,8 +671,8 @@ function uxTests(){
   ok('守卫：启动不再无条件推送（假冲突源头已移除）', !/flushLocalDB\(\);\s*\n\s*pushStoreSvc\(\);/.test(html));
   ok('守卫：项目归属切换有确认与说明', html.includes('function setProjectScope') && html.includes('共享给团队'));
   /* ---- v1.6 走查修复守卫（账户可信 / 权限单源 / XSS / 会话证明） ---- */
-  const serverJs = fs.readFileSync(path.join(ROOT, 'flowtask_server.js'), 'utf8');
-  const serverPs1 = fs.readFileSync(path.join(ROOT, 'flowtask_server.ps1'), 'utf8');
+  const serverJs = readSource(path.join(ROOT, 'flowtask_server.js'));
+  const serverPs1 = readSource(path.join(ROOT, 'flowtask_server.ps1'));
   ok('v1.6 守卫：登录改走挑战+证明流程', html.includes('/api/auth-challenge') && html.includes('verifier'));
   ok('v1.6 守卫：服务端会话签发必须验证密码证明（Node）', serverJs.includes("err:'verifier required'") && serverJs.includes('timingSafeEqual'));
   ok('v1.6 守卫：PS 版同样验证密码证明', serverPs1.includes("err = 'verifier required'") && serverPs1.includes('Test-SafeEqualStr'));
@@ -682,7 +685,7 @@ function uxTests(){
   ok('v1.6 守卫：备份轮转按完整时间戳匹配', serverJs.includes('d{8}_') && serverPs1.includes('d{8}_'));
   ok('v1.6 守卫：共享/收回确认弹窗项目名已转义', html.includes("html: '「' + esc(proj.name)"));
   ok('v1.6 守卫：成员管理与项目设置权限单源 canManageProject', html.includes('function canManageProject') && html.includes('canManageProject(proj) ? `<button') && html.includes('if(!canManageProject(proj)) return toast'));
-  ok('v1.6 守卫：项目设置改名/改描述仅管理权可保存', html.includes('if(canAdmin){\n      proj.name = $(\'#ps-name\')'));
+  ok('v1.6 守卫：项目设置改名/改描述仅管理权可保存', html.includes("if(canAdmin){\n      proj.name = $('#ps-name')"));
   ok('v1.6 守卫：越权归因区分访客与非成员', html.includes('function denyWriteTaskMsg') && !html.includes("'只读访客不能改变任务状态，卡片已放回原位'"));
   ok('v1.6 守卫：用户菜单改为原生按钮（键盘可登出）', html.includes('<button type="button" class="user-chip"'));
   ok('v1.6 守卫：toast 与保存状态带 aria-live', html.includes('id="toast-wrap" role="status" aria-live="polite"') && html.includes('id="store-status" onclick="retryStoreSvc()" role="status"'));
@@ -775,15 +778,29 @@ function uxTests(){
   ok('偏好：没有历史记录时回首页', ev('startHash()') === '#/');
 
   /* ---- 启动脚本不得再起任何控制台进程（否则双击时会闪黑窗口） ---- */
-  const vbs = fs.readFileSync(path.join(ROOT, '启动 FlowTask.vbs'), 'utf8');
+  const vbs = readSource(path.join(ROOT, '启动 FlowTask.vbs'));
   ok('守卫：启动脚本不用 sh.Exec 起 cmd（无黑窗口）', vbs.indexOf('.Exec(') < 0);
   ok('守卫：启动脚本以隐藏窗口方式起服务', /,\s*0,\s*False/.test(vbs));
   ok('守卫：PowerShell 走系统固定路径探测', vbs.includes('WindowsPowerShell') && vbs.includes('FileExists'));
 
   const ver = vm.runInContext('APP_VERSION', sandbox);
-  const cl = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
+  const cl = readSource(path.join(ROOT, 'CHANGELOG.md'));
   const topVer = (cl.match(/^## \[(\d+\.\d+\.\d+)\]/m) || [])[1];
   ok('守卫：APP_VERSION 与 CHANGELOG 顶部版本一致', ver === topVer, `代码 ${ver} / CHANGELOG ${topVer}`);
+
+  /* ---- v2.1.3 走查修复守卫（状态单源 / 显示名收口 / 属性注入面） ---- */
+  ok('守卫：状态取值域只有 STATUS_DEF 一个真相源（无第二份三值字面量）',
+    !/'todo'\s*,\s*'doing'\s*,\s*'done'/.test(html) && !/"todo"\s*,\s*"doing"\s*,\s*"done"/.test(html),
+    '不得再出现 [todo,doing,done] 这类漏掉 paused 的字面量');
+  ok('守卫：导入闸门的 STATUS_OK 由 STATUS_ORDER 派生',
+    /const STATUS_OK = STATUS_ORDER;/.test(html));
+  ok('守卫：显示名走 safeName 收口（注册 / 个人设置）',
+    html.includes('function safeName(') && html.includes('name = safeName(name) || username;')
+    && html.includes("const v = safeName($('#pf-name').value);"));
+  ok('守卫：safeName 压掉能构造标签与属性溢出的字符',
+    /function safeName\(s\)\{[\s\S]{0,400}replace\(\/\[<>\`\]\/g/.test(html));
+  ok('守卫：项目创建人显示名已转义（曾是一处跨账户存储型 XSS）',
+    html.includes("项目创建人 ${esc((DB.users.find(u=>u.id===proj.ownerId)||{}).name||'—')}"));
 }
 
 /* ================= Node 服务端集成测试 ================= */
@@ -948,7 +965,7 @@ async function ps1Smoke(){
     const total = passed + failed;
     let declared = null;
     try{
-      const rm = fs.readFileSync(require('path').join(__dirname, '..', 'README.md'), 'utf8');
+      const rm = readSource(require('path').join(__dirname, '..', 'README.md'));
       const m = rm.match(/node tests\/flowtask_test\.js\s+#.*?（(\d+)\s*条/);
       if(m) declared = Number(m[1]);
     }catch(e){}

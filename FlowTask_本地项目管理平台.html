@@ -1053,6 +1053,20 @@ function safeColor(c, fallback='#9aa1ac'){
 /* P0-3：项目播报心情白名单——class="mood-${...}" 同样是属性拼接，不能直落数据 */
 const MOOD_KEYS = ['ontrack','atrisk','offtrack'];
 function safeMood(m){ return MOOD_KEYS.indexOf(m) >= 0 ? m : 'ontrack'; }
+/* 显示名（用户自己起的名字）统一收口。它出现在 26 处模板字符串里，其中「项目创建人」
+   一处漏了 esc() 就是一条跨账户存储型 XSS（任意 member 改个名即可对同事触发）；
+   只在渲染端补一次 esc() 是治标——真正的根因是这个字段从前端到服务端都不做任何校验
+   （username 有正则，name 只有 trim）。所以在入口处就压掉能撑破 HTML 文本位与属性位的
+   字符（< > ` 与控制字符），让"忘了 esc()"从此不再是安全漏洞。 */
+const NAME_MAX = 40;
+function safeName(s){
+  return String(s == null ? '' : s)
+    .replace(/[\u0000-\u001f\u007f]/g, '')     // 控制字符（含 \r\n\t）
+    .replace(/[<>`]/g, '')                     // 能构造标签 / 属性溢出的字符
+    .replace(/\s+/g, ' ')                      // 折叠空白，避免多行名撑破布局
+    .trim()
+    .slice(0, NAME_MAX);
+}
 /* P1-5：静默 catch 的统一去处——不再无声吞掉异常，至少留一条可追查的线索 */
 function logSoft(msg, e){
   try{ console.warn('[FlowTask] ' + msg + (e && e.message ? '：' + e.message : '')); }catch(_e){}
@@ -1119,7 +1133,7 @@ function bindMemberChips(scope){
 /* 下面这处 BEGIN/END 成对标记是修好的错位：原先 990 那段一直没能收尾，
    而 toast/PRIO/prioName 这一段只有 END 没有 BEGIN，整段落在测试沙箱之外 */
 /*==TEST-BEGIN==*/
-const APP_VERSION = '2.1.2';   /* 与 CHANGELOG.md 顶部版本号保持一致（单测有守卫断言） */
+const APP_VERSION = '2.1.3';   /* 与 CHANGELOG.md 顶部版本号保持一致（单测有守卫断言） */
 /* 任务状态的唯一真相源：名称 / 样式类 / 色板令牌 / 选择器 全部从这里派生 */
 const STATUS_DEF = [
   { st:'todo',   name:'待办',   cls:'s-todo',   dot:'var(--st-todo-dot)'   },
@@ -2699,7 +2713,7 @@ async function loadAccounts(){
 }
 async function register(username, name, password, extra){
   username = String(username||'').trim().toLowerCase();
-  name = String(name||'').trim() || username;
+  name = safeName(name) || username;
   if(!/^[a-z0-9_\-\u4e00-\u9fa5]{2,20}$/.test(username)) return '用户名需为 2-20 位字母/数字/中文';
   if(String(password||'').length < 6) return '密码至少 6 位';
   if(!AUTH || !_authHealthy) return '账户表还没就绪，请稍后重试';
@@ -3550,7 +3564,7 @@ function spawnRecurringNext(t){
 function createTask(pid, status, title, extra={}){
   const proj = P.visibleProject(pid);
   if(!proj || !P.canWriteProject(proj)) return toast('无权在此项目创建任务', 'err');
-  const st = (['todo','doing','done'].includes(status)) ? status : (extra.status||'todo');
+  const st = STATUS_ORDER.includes(status) ? status : (extra.status||'todo');
   const done = st==='done';
   const t = { id:uid('t_'), projectId:pid, title, desc:'', assigneeId:extra.assigneeId||null,
     dueDate:extra.dueDate||null, startDate:extra.startDate||null,
@@ -4031,7 +4045,7 @@ function PREF(){
   const p = Object.assign({}, PREF_DEFAULTS, (UI && UI.prefs) || {});
   if(PROJECT_VIEWS.indexOf(p.projView) < 0) p.projView = PREF_DEFAULTS.projView;
   if(['last','home','my-tasks'].indexOf(p.startPage) < 0) p.startPage = PREF_DEFAULTS.startPage;
-  if(['todo','doing','done'].indexOf(p.newTaskStatus) < 0) p.newTaskStatus = PREF_DEFAULTS.newTaskStatus;
+  if(STATUS_ORDER.indexOf(p.newTaskStatus) < 0) p.newTaskStatus = PREF_DEFAULTS.newTaskStatus;
   p.tagLimit = Number(p.tagLimit);
   if(!isFinite(p.tagLimit) || p.tagLimit < 0 || p.tagLimit > 99) p.tagLimit = PREF_DEFAULTS.tagLimit;
   /* 「显示全部项目」是权限相关的开关，只认真正的 true：手改 localStorage 或旧数据里的
@@ -4610,7 +4624,7 @@ function renderOverview(proj, canWrite){
     <div class="dt-sec" style="border:none;padding-top:0">
       <div class="dt-sec-title">项目简介</div>
       <p style="font-size:13.5px;color:var(--text-sub);line-height:1.8;min-height:30px">${esc(proj.desc)||'暂无描述。'}</p>
-      <p style="font-size:12px;color:var(--text-faint);margin-top:6px">创建于 ${fmtDateFull(proj.createdAt)} · 项目创建人 ${(DB.users.find(u=>u.id===proj.ownerId)||{}).name||'—'} · ${unassigned.length} 项任务未指派</p>
+      <p style="font-size:12px;color:var(--text-faint);margin-top:6px">创建于 ${fmtDateFull(proj.createdAt)} · 项目创建人 ${esc((DB.users.find(u=>u.id===proj.ownerId)||{}).name||'—')} · ${unassigned.length} 项任务未指派</p>
     </div>
 
     <div class="dt-sec">
@@ -5642,7 +5656,7 @@ function openNewUserModal(){
       <option value="admin">管理员（全部权限）</option>
     </select></div>
   `, async ()=>{
-    const username = $('#nu-username').value.trim(), name = $('#nu-name').value.trim(),
+    const username = $('#nu-username').value.trim(), name = $('#nu-name').value,
           password = $('#nu-password').value, role = $('#nu-role').value;
     if(!password || password.length < 6){ showFieldError($('#nu-password'), '初始口令至少 6 位'); return false; }
     const r = await register(username, name, password, { role, pwMustChange: true });
@@ -5795,7 +5809,7 @@ function renderSettings(c){
   bindPref('#pf-taglimit', 'tagLimit', ()=>renderApp());
   bindPref('#pf-newstatus', 'newTaskStatus');
   $('#pf-save').onclick = ()=>{
-    const v = $('#pf-name').value.trim();
+    const v = safeName($('#pf-name').value);
     if(!v) return toast('显示名称不能为空','err');
     ME.name = v; saveAuth(); renderApp(); toast('资料已保存');
   };
@@ -6195,7 +6209,10 @@ function validateImportData(data){
      （如 data-task="${t.id}"、class="check-circle st-${t.status||'todo'}"、data-sub="${t.id}/${s.id}"）。
      仅当字段存在时校验，缺失/null 一律放行；只加严、不误拒正常备份。 */
   const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-  const STATUS_OK = ['todo','doing','done'];
+  /* 状态取值域从 STATUS_ORDER 派生，不得再写第二份字面量。
+     这里曾只列 todo/doing/done 三态、漏掉「已暂停」，后果有二：含暂停任务的备份
+     （自己导出的就是）无法导回；在「已暂停」列里加任务会建出「待办」。 */
+  const STATUS_OK = STATUS_ORDER;
   const PRIO_OK = ['high','med','low'];
   const badStatus = v => v !== undefined && v !== null && STATUS_OK.indexOf(v) < 0;
   const badPrio = v => v !== undefined && v !== null && PRIO_OK.indexOf(v) < 0;
@@ -6754,7 +6771,7 @@ function openQuickAddModal(defaultPid, defaultStatus, defaultDueDate){
   /* v1.7.5：默认项目 = 显式传入 > 当前所在项目 > 上一次创建任务的项目 > 第一个项目。
      此前在某个项目里呼出快速添加，默认仍固定落在第一个项目，每次都得重选。 */
   const pid = quickAddDefaultProject(defaultPid, projects, ROUTE, UI.lastAddPid);
-  const st = ['todo','doing','done'].includes(defaultStatus) ? defaultStatus : PREF().newTaskStatus;
+  const st = STATUS_ORDER.includes(defaultStatus) ? defaultStatus : PREF().newTaskStatus;
   const projOpts = projects.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${esc(p.name)}</option>`).join('');
   /* v1.7.2：新建任务默认指派给当前用户（所选项目成员里包含我时）；
      @人名解析与手动选择仍可覆盖默认值 */

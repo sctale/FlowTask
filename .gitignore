@@ -42,8 +42,12 @@ desktop/src-tauri/binaries/*.exe
 desktop/src-tauri/gen/
 desktop/dist/
 
-# 内部部署记录（含真实内网信息，仅私有分支保留，绝不公开）
-局域网多用户升级方案.md
-
 # Agent 工作手册（含内部发布纪律与脱敏清单，只留本地，不入库）
 AGENTS.md
+
+# 内网部署方案（含内网 IP、UNC 共享路径与域账号实测记录）：只留本地，绝不入库
+# 此前它在 master 上是被跟踪的，而 master 没有设 upstream —— 一次 git push origin master 就会带出去
+局域网多用户升级方案.md
+
+# v2.1.2 内部代码审查报告（含内网信息记录），永不公开
+docs/优化方案*

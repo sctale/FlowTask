@@ -1,4 +1,4 @@
-﻿# FlowTask 本地文件存储服务（PowerShell 零依赖版 · v2.1.1）
+﻿# FlowTask 本地文件存储服务（PowerShell 零依赖版 · v2.1.3）
 # --------------------------------------------------------
 # 作用：把 FlowTask 数据实时写入同目录的 JSON 文件，
 #       无需安装 Node.js，Windows 10/11 自带 PowerShell 即可运行。
@@ -53,7 +53,7 @@ $backupDir  = Join-Path $DataDir 'backups'
 $htmlFile   = Join-Path $baseDir 'FlowTask_本地项目管理平台.html'
 $utf8NoBom  = New-Object System.Text.UTF8Encoding($false)
 
-$script:VERSION = '2.1.1'
+$script:VERSION = '2.1.3'
 $script:TOKEN = [Guid]::NewGuid().ToString('N')
 $script:allowedOrigins = @(("http://{0}:{1}" -f $HostIP, $Port), 'null')
 $bodyLimit        = 8 * 1024 * 1024

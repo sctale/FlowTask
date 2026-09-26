@@ -43,8 +43,22 @@ if ($patched -eq $orig) { throw '未能在 tauri.conf.json 注入签名配置（
 [System.IO.File]::WriteAllText((Resolve-Path $confPath), $patched, (New-Object System.Text.UTF8Encoding $false))
 try {
     # 3) sidecar（Node SEA + 清残缺签名 + 手工签名）
-    if (-not $SkipSidecar) { node (Join-Path $PSScriptRoot 'scripts/build-sidecar.cjs') }
+    #    退出码必须显式判：构建失败却继续往下走，会拿上一轮的陈旧 exe 去签名出包，
+    #    产物看起来"成功"、实际服务端是旧的（tauri build 那步有判，这里此前没有）。
+    if (-not $SkipSidecar) {
+        node (Join-Path $PSScriptRoot 'scripts/build-sidecar.cjs')
+        if ($LASTEXITCODE -ne 0) { throw "sidecar 构建失败（node 退出码 $LASTEXITCODE），已中止出包" }
+    }
     $sidecar = Join-Path $PSScriptRoot 'src-tauri/binaries/flowtask-server-x86_64-pc-windows-msvc.exe'
+    # -SkipSidecar 没有新鲜度校验时，服务端源码改了却复用旧 sidecar 会静默发出版本不符的包
+    if ($SkipSidecar) {
+        $sidecarTime = (Get-Item $sidecar).LastWriteTimeUtc
+        $newestSrc = Get-ChildItem $root -Filter 'flowtask_*.js' -File |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+        if ($newestSrc -and $newestSrc.LastWriteTimeUtc -gt $sidecarTime) {
+            throw "-SkipSidecar 但服务端源码比 sidecar 新（$($newestSrc.Name) > $($sidecarTime.ToString('u'))）：请去掉 -SkipSidecar 重新构建"
+        }
+    }
     Write-Host '== 签名 sidecar =='
     & $signtool.FullName sign /fd SHA256 /sha1 $thumb /tr http://timestamp.digicert.com /td SHA256 $sidecar | Out-Null
     if ((Get-AuthenticodeSignature $sidecar).Status -ne 'Valid') { throw 'sidecar 签名失败' }
@@ -81,6 +95,19 @@ try {
     Copy-Item $installer $dist -Force
     Copy-Item (Join-Path $PSScriptRoot 'src-tauri/target/release/flowtask-server.exe') (Join-Path $dist 'flowtask-server.exe') -Force
     Copy-Item (Join-Path $PSScriptRoot 'src-tauri/target/release/app.html') $dist -Force
+
+    # 5b) 分发物里绝不允许出现运行时数据：在 exe 旁边双击跑一次，服务就会在**同目录**
+    #     生成 flowtask_auth.json / flowtask_secret.json（含真实口令哈希与会话签名密钥）。
+    #     dist 是拿去内网分发甚至打包上传的目录，混进这两个文件等于把凭据一起发出去。
+    $leaked = Get-ChildItem $dist -File | Where-Object {
+        $_.Name -match '^flowtask_(auth|shared|secret|sync)\.json$' -or
+        $_.Name -match '^flowtask_data_' -or $_.Name -match '\.base\.json$'
+    }
+    if ($leaked) {
+        throw ("dist 里混入了运行时数据文件，已中止出包：" + (($leaked | ForEach-Object { $_.Name }) -join ' , ') +
+               "`n请删掉这些文件（它们记录的是你自己的账户与密钥），再重新汇总产物。")
+    }
+
     Push-Location $dist
     Get-ChildItem -Exclude SHA256SUMS.txt | ForEach-Object {
         $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()

@@ -85,7 +85,7 @@ const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const SECRET_FILE = path.join(DATA_DIR, 'flowtask_secret.json');
 const AUTH_FILE = path.join(DATA_DIR, 'flowtask_auth.json');
 
-const VERSION = '2.1.1';
+const VERSION = '2.1.3';
 const TOKEN = crypto.randomBytes(16).toString('hex');
 const ALLOWED_ORIGINS = new Set(['http://' + HOST + ':' + PORT, 'null']);
 const BODY_LIMIT = 8 * 1024 * 1024;
